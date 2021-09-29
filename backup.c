@@ -401,7 +401,7 @@ static void count_iter_func(const char *k, const void *v, void *ctx)
 static void bloom_iter_func(const char *k, const void *v, void *ctx)
 {
 	if (strchr(k, '.')) return;
-	bloom_add(ctx, v);
+	bloom_add(ctx, v, HASHLEN);
 }
 
 static int emit_bloom(FILE *f, FILE *out, const struct map *new_index)
@@ -411,11 +411,11 @@ static int emit_bloom(FILE *f, FILE *out, const struct map *new_index)
 	struct bloom *b = bloom_create(3, count/2+1);
 	map_iter(new_index, bloom_iter_func, b);
 	unsigned char hash[HASHLEN];
-	sha3(b->bits, b->l+1, hash, HASHLEN);
+	sha3(b->bits, b->l+32, hash, HASHLEN);
 	char label[2*HASHLEN+1];
 	for (int i=0; i<HASHLEN; i++) snprintf(label+2*i, 3, "%.2x", hash[i]);
 	fprintf(f, "bloom %s\n", label);
-	return emit_clear_file(out, label, b->bits, b->l+1);
+	return emit_clear_file(out, label, b->bits, b->l+32);
 }
 
 static void backup_usage(char *progname)
