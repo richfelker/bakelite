@@ -13,6 +13,7 @@
 #include "map.h"
 #include "store.h"
 #include "crypto.h"
+#include "bloom.h"
 
 struct level {
 	struct level *parent;
@@ -391,6 +392,32 @@ static void emit_drops(FILE *f, const struct map *prev_index, const struct map *
 	map_iter(prev_index, iter_func, &dc);
 }
 
+static void count_iter_func(const char *k, const void *v, void *ctx)
+{
+	if (strchr(k, '.')) return;
+	++*(long long *)ctx;
+}
+
+static void bloom_iter_func(const char *k, const void *v, void *ctx)
+{
+	if (strchr(k, '.')) return;
+	bloom_add(ctx, v);
+}
+
+static int emit_bloom(FILE *f, FILE *out, const struct map *new_index)
+{
+	long long count = 0;
+	map_iter(new_index, count_iter_func, &count);
+	struct bloom *b = bloom_create(3, count/2+1);
+	map_iter(new_index, bloom_iter_func, b);
+	unsigned char hash[HASHLEN];
+	sha3(b->bits, b->l+1, hash, HASHLEN);
+	char label[2*HASHLEN+1];
+	for (int i=0; i<HASHLEN; i++) snprintf(label+2*i, 3, "%.2x", hash[i]);
+	fprintf(f, "bloom %s\n", label);
+	return emit_clear_file(out, label, b->bits, b->l+1);
+}
+
 static void backup_usage(char *progname)
 {
 	printf("usage: %s backup [options] <indexdir>\n", progname);
@@ -407,6 +434,8 @@ int backup_main(int argc, char **argv, char *progname)
 	int out_piped = 0;
 	int commit_on_success = 0;
 	struct stat st;
+	int want_drops = 1;
+	int want_bloom = 1;
 
 	while ((c=getopt(argc, argv, "cb:xs:o:")) >= 0) switch (c) {
 	case 'c':
@@ -600,7 +629,12 @@ no_prev_index:
 	fprintf(f, "root ");
 	for (int i=0; i<HASHLEN; i++) fprintf(f, "%.2x", root_hash[i]);
 	fprintf(f, "\n");
-	emit_drops(f, prev_index, new_index);
+	if (want_drops) {
+		emit_drops(f, prev_index, new_index);
+	}
+	if (want_bloom) {
+		emit_bloom(f, out, new_index);
+	}
 	fclose(f);
 
 	struct tm tm;
