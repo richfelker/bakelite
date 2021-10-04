@@ -10,6 +10,7 @@ int backup_main(int, char **, char *);
 int commit_main(int, char **, char *);
 int abort_main(int, char **, char *);
 int restore_main(int, char **, char *);
+int prune_main(int, char **, char *);
 
 static void usage(char *progname)
 {
@@ -49,6 +50,8 @@ int main(int argc, char **argv)
 		return abort_main(argc, argv, progname);
 	} else if (!strcmp(cmd, "restore")) {
 		return restore_main(argc, argv, progname);
+	} else if (!strcmp(cmd, "prune")) {
+		return prune_main(argc, argv, progname);
 	} else {
 		printf("unknown command: %s\n", cmd);
 		usage(progname);
