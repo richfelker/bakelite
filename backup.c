@@ -11,6 +11,7 @@
 #include <limits.h>
 #include "sha3.h"
 #include "map.h"
+#include "localindex.h"
 #include "store.h"
 #include "crypto.h"
 #include "bloom.h"
@@ -29,11 +30,9 @@ struct level {
 
 struct ctx {
 	struct crypto_context cc;
-	struct timespec since;
-	const struct map *prev_index;
-	struct map *new_index;
+	const struct localindex *prev_index;
+	struct localindex *new_index;
 	struct map *dev_map;
-	FILE *new_index_file;
 	size_t bsize;
 	dev_t root_dev;
 	int xdev;
@@ -63,43 +62,10 @@ FILE *ffopenat(int d, const char *name, int flags, mode_t mode)
 	return f;
 }
 
-static struct map *index_load(FILE *f)
+static int emit_file_blocks(FILE *in, FILE *out, dev_t dev, ino_t ino, FILE *blocklist, struct ctx *ctx)
 {
-	struct map *map = map_create();
-	if (!map) goto fail;
-
-	char buf[256];
-	while (fgets(buf, sizeof buf, f)) {
-		int p1 = -1, p2 = -1;
-		sscanf(buf, "%*s%n%*s%n", &p1, &p2);
-		if (p2 < 0) goto fail;
-		buf[p1] = buf[p2] = 0;
-		unsigned char *val = malloc(HASHLEN);
-		if (!val) goto fail;
-		for (int i=0; i<HASHLEN; i++)
-			sscanf(buf+p1+1+2*i, "%2hhx", &val[i]);
-		if (map_set(map, buf, val) < 0) goto fail;
-	}
-	if (ferror(f)) goto fail;
-	return map;
-fail:
-	if (map) map_destroy(map);
-	return 0;
-}
-
-static int index_set(struct map *new_index, FILE *f, const char *hash_label, const unsigned char *blob_id)
-{
-	map_set(new_index, hash_label, (void *)blob_id);
-	fprintf(f, "%s ", hash_label);
-	for (int i=0; i<HASHLEN; i++) fprintf(f, "%.2x", blob_id[i]);
-	fprintf(f, "\n");
-	return 0;
-}
-
-static int emit_file_blocks(FILE *in, FILE *out, const char *ino_label, FILE *blocklist, struct ctx *ctx)
-{
-	const struct map *prev_index = ctx->prev_index;
-	struct map *new_index = ctx->new_index;
+	const struct localindex *prev_index = ctx->prev_index;
+	struct localindex *new_index = ctx->new_index;
 	size_t bsize = ctx->bsize;
 	struct crypto_context *cc = &ctx->cc;
 	unsigned char *buf = ctx->blockbuf;
@@ -112,28 +78,22 @@ static int emit_file_blocks(FILE *in, FILE *out, const char *ino_label, FILE *bl
 			int err = ferror(in);
 			return err ? -1 : 0;
 		}
-		unsigned char *hash = malloc(HASHLEN);
-		if (!hash)
-			goto fail;
+		unsigned char hash[HASHLEN];
 		sha3(buf, len, hash, HASHLEN);
-		char ino_block_label[80];
-		snprintf(ino_block_label, sizeof ino_block_label, "%s.%llu", ino_label, idx);
-		if (index_set(new_index, ctx->new_index_file, ino_block_label, hash))
+		if (localindex_setino(new_index, dev, ino, idx, hash) < 0)
 			goto fail;
 
-		char hash_label[2*HASHLEN+1];
-		for (int i=0; i<HASHLEN; i++)
-			snprintf(hash_label+2*i, sizeof hash_label-2*i, "%.2x", hash[i]);
-		void *blob_id = map_get(prev_index, hash_label);
-		if (!blob_id) {
-			blob_id = malloc(HASHLEN);
-			if (!blob_id)
-				goto fail;
+		unsigned char blob_id[HASHLEN];
+		int r = localindex_getblock(prev_index, hash, blob_id);
+		if (r < 0) goto fail;
+		if (!r) {
 			if (emit_new_blob(blob_id, out, buf, len+4, cc) < 0)
 				goto fail;
 		}
-		if (!map_get(new_index, hash_label)) {
-			if (index_set(new_index, ctx->new_index_file, hash_label, blob_id))
+		r = localindex_getblock(new_index, hash, blob_id);
+		if (r < 0) goto fail;
+		if (!r) {
+			if (localindex_setblock(new_index, hash, blob_id))
 				goto fail;
 		}
 		if (fwrite(blob_id, 1, HASHLEN, blocklist) != HASHLEN) goto fail;
@@ -161,11 +121,12 @@ static int write_ino(FILE *f, struct stat *st)
 	return 0;
 }
 
-unsigned char *walk(int base_fd, struct ctx *ctx)
+int walk(unsigned char *roothash, int base_fd, struct ctx *ctx)
 {
-	const struct map *prev_index = ctx->prev_index;
-	struct map *new_index = ctx->new_index;
-	const struct timespec *since = &ctx->since;
+	const struct localindex *prev_index = ctx->prev_index;
+	struct localindex *new_index = ctx->new_index;
+	const struct timespec *since = &prev_index->ts;
+	int r;
 
 	struct level *cur = malloc(sizeof *cur);
 	if (!cur) goto fail;
@@ -267,36 +228,27 @@ unsigned char *walk(int base_fd, struct ctx *ctx)
 		    is_later_than(&st.st_mtim, since))
 			changed = 1;
 
-		char ino_label[36];
-		if (st.st_dev == ctx->root_dev)
-			snprintf(ino_label, sizeof ino_label, "%ju",
-				(uintmax_t)st.st_ino);
-		else if (cur->dev_name)
-			snprintf(ino_label, sizeof ino_label, "%s/%ju",
-				cur->dev_name, (uintmax_t)st.st_ino);
-		else
-			snprintf(ino_label, sizeof ino_label, "%jx:%ju",
-				(uintmax_t)st.st_dev, (uintmax_t)st.st_ino);
-
-		unsigned char *ino_hash = map_get(new_index, ino_label);
-		if (ino_hash)
+		unsigned char ino_hash[HASHLEN];
+		r = localindex_getino(new_index, st.st_dev, st.st_ino, -1, ino_hash);
+		if (r < 0) goto fail;
+		if (r)
 			goto got_hardlink;
 		if (!changed) {
-			ino_hash = map_get(prev_index, ino_label);
-			if (ino_hash) {
-				char ino_block_label[80];
+			r = localindex_getino(prev_index, st.st_dev, st.st_ino, -1, ino_hash);
+			if (r < 0) goto fail;
+			if (r) {
 				for (uint64_t i=0; ; i++) {
-					snprintf(ino_block_label, sizeof ino_block_label, "%s.%llu", ino_label, i);
-					unsigned char *block_hash = map_get(prev_index, ino_block_label);
-					if (!block_hash) break;
-					if (index_set(new_index, ctx->new_index_file, ino_block_label, block_hash))
-						goto fail;
-					char block_hash_label[2*HASHLEN+1];
-					for (int i=0; i<HASHLEN; i++)
-						snprintf(block_hash_label+2*i, sizeof block_hash_label-2*i, "%.2x", block_hash[i]);
-					unsigned char *enc_block_hash = map_get(prev_index, block_hash_label);
-					if (index_set(new_index, ctx->new_index_file, block_hash_label, enc_block_hash))
-						goto fail;
+					unsigned char block_hash[HASHLEN], cipher_hash[HASHLEN];
+					int r = localindex_getino(prev_index, st.st_dev, st.st_ino, i, block_hash);
+					if (r < 0) goto fail;
+					if (!r) break;
+					r = localindex_setino(new_index, st.st_dev, st.st_ino, i, block_hash);
+					r = localindex_getblock(prev_index, block_hash, cipher_hash);
+					if (r <= 0) goto fail;
+					if (!localindex_getblock(new_index, block_hash, 0)) {
+						r = localindex_setblock(new_index, block_hash, cipher_hash);
+						if (r < 0) goto fail;
+					}
 				}
 				goto got_ino_hash;
 			}
@@ -331,7 +283,7 @@ unsigned char *walk(int base_fd, struct ctx *ctx)
 				}
 				if (!is_small) {
 					fprintf(ino_f, "blocks%c", 0);
-					if (emit_file_blocks(f, out, ino_label, ino_f, ctx) < 0)
+					if (emit_file_blocks(f, out, st.st_dev, st.st_ino, ino_f, ctx) < 0)
 						goto fail;
 				}
 				fclose(f);
@@ -352,22 +304,25 @@ unsigned char *walk(int base_fd, struct ctx *ctx)
 		// with a timestamp.
 		if (!cur) cc_rekey(&ctx->cc);
 
-		ino_hash = malloc(HASHLEN);
 		if (emit_new_blob(ino_hash, out, data, dlen, &ctx->cc) < 0) goto fail;
 got_ino_hash:
-		if (index_set(new_index, ctx->new_index_file, ino_label, ino_hash)) goto fail;
+		if (localindex_setino(new_index, st.st_dev, st.st_ino, -1, ino_hash) < 0)
+			goto fail;
 got_hardlink:
 		free(data);
 		if (fd>=0) close(fd);
 
-		if (!cur) return ino_hash;
+		if (!cur) {
+			memcpy(roothash, ino_hash, HASHLEN);
+			return 0;
+		}
 
 		fwrite(ino_hash, 1, HASHLEN, cur->ents);
 		fprintf(cur->ents, "%s%c", cur->de->d_name, 0);
 	}
 fail:
 	perror("fail");
-	return 0;
+	return -1;
 }
 
 struct drop_ctx {
@@ -464,7 +419,7 @@ int backup_main(int argc, char **argv, char *progname)
 	}
 
 	const char *indexdir = argv[optind];
-	struct map *prev_index, *new_index, *dev_map;
+	struct map *dev_map;
 
 	d = open(indexdir, O_RDONLY|O_DIRECTORY|O_CLOEXEC);
 	if (d < 0) {
@@ -494,6 +449,10 @@ int backup_main(int argc, char **argv, char *progname)
 		struct dirent *de;
 		while (errno=0, (de = readdir(devdir))) {
 			struct stat st;
+			if (de->d_name[0] == '.') {
+				if (!de->d_name[1]) continue;
+				if (de->d_name[1] == '.' && !de->d_name[2]) continue;
+			}
 			if (!fstatat(dirfd(devdir), de->d_name, &st, 0)) {
 				char dev_label[2*sizeof(uintmax_t)+1];
 				snprintf(dev_label, sizeof dev_label, "%jx", (uintmax_t)st.st_dev);
@@ -525,42 +484,41 @@ int backup_main(int argc, char **argv, char *progname)
 		perror("opening directory to backup");
 		return 1;
 	}
+	fstat(base_fd, &st);
+	dev_t root_dev = st.st_dev;
+	char root_dev_str[2*sizeof(dev_t)+1];
+	snprintf(root_dev_str, sizeof root_dev_str, "%jx", (uintmax_t)st.st_dev);
+	if (!map_get(dev_map, root_dev_str) && map_set(dev_map, root_dev_str, ""))
+		return 1;
 
-	struct timespec ts0, since = { 0 };
+	struct timespec ts0;
 	clock_gettime(CLOCK_REALTIME, &ts0);
 
+	struct localindex prev_index = { 0 }, new_index = { 0 };
+
 	f = ffopenat(d, "index", O_RDONLY|O_CLOEXEC, 0);
-	if (!f) {
-		if (errno == ENOENT) {
-			prev_index = map_create();
-			goto no_prev_index;
-		}
+	if (f) {
+		if (localindex_open(&prev_index, f, dev_map) < 0)
+			return 1;
+		fclose(f);
+	} else if (errno == ENOENT) {
+		if (localindex_null(&prev_index) < 0)
+			return 1;
+	} else {
 		perror("cannot open index file");
 		return 1;
 	}
-	char *s=0;
-	size_t n=0;
-	while (getline(&s, &n, f)>=0) {
-		if (!strncmp(s, "timestamp ", 10)) {
-			long long t, ns;
-			sscanf(s+10, "%lld.%lld", &t, &ns);
-			since.tv_sec = t;
-			since.tv_nsec = ns;
-		} else if (!strncmp(s, "index", 5)) {
-			break;
-		}
-	}
-	prev_index = index_load(f);
-	fclose(f);
-no_prev_index:
 
-	if (is_later_than(&since, &ts0)) {
+	if (is_later_than(&prev_index.ts, &ts0)) {
 		fprintf(stderr, "error: index timestamp is in the future\n");
 		exit(1);
 	}
 
 	f = ffopenat(d, "index.pending", O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC, 0600);
-	if (!f) {
+	if (f) {
+		if (localindex_create(&new_index, f, &ts0, dev_map) < 0)
+			return 1;
+	} else {
 		if (errno == EEXIST) {
 			fprintf(stderr, "uncommitted backup already pending; commit or abort first\n");
 			return 1;
@@ -568,16 +526,12 @@ no_prev_index:
 		perror("error opening new index for writing");
 		return 1;
 	}
-	fprintf(f, "timestamp %lld.%.9ld\n", (long long)ts0.tv_sec, ts0.tv_nsec);
-	fprintf(f, "index\n");
 
-	new_index = map_create();
 	struct ctx ctx = {
-		.since = since,
-		.prev_index = prev_index,
-		.new_index = new_index,
+		.prev_index = &prev_index,
+		.new_index = &new_index,
+		.root_dev = root_dev,
 		.dev_map = dev_map,
-		.new_index_file = f,
 		.bsize = bsize,
 		.xdev = xdev,
 		.blockbuf = malloc(bsize+4),
@@ -616,10 +570,9 @@ no_prev_index:
 	}
 	ctx.out = out;
 	
-	fstat(base_fd, &st);
-	ctx.root_dev = st.st_dev;
-	unsigned char *root_hash = walk(base_fd, &ctx);
-	if (!root_hash) exit(1);
+	unsigned char root_hash[HASHLEN];
+	if (walk(root_hash, base_fd, &ctx) < 0)
+		exit(1);
 	fclose(f);
 
 	char *sumdata;
@@ -630,10 +583,10 @@ no_prev_index:
 	for (int i=0; i<HASHLEN; i++) fprintf(f, "%.2x", root_hash[i]);
 	fprintf(f, "\n");
 	if (want_drops) {
-		emit_drops(f, prev_index, new_index);
+		emit_drops(f, prev_index.m, new_index.m);
 	}
 	if (want_bloom) {
-		emit_bloom(f, out, new_index);
+		emit_bloom(f, out, new_index.m);
 	}
 	fclose(f);
 
