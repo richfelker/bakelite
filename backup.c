@@ -325,24 +325,11 @@ fail:
 	return -1;
 }
 
-static void count_iter_func(const char *k, const void *v, void *ctx)
+static int emit_bloom(FILE *f, FILE *out, const struct localindex *new_index)
 {
-	if (strchr(k, '.')) return;
-	++*(long long *)ctx;
-}
-
-static void bloom_iter_func(const char *k, const void *v, void *ctx)
-{
-	if (strchr(k, '.')) return;
-	bloom_add(ctx, v, HASHLEN);
-}
-
-static int emit_bloom(FILE *f, FILE *out, const struct map *new_index)
-{
-	long long count = 0;
-	map_iter(new_index, count_iter_func, &count);
+	long long count = new_index->obj_count;
 	struct bloom *b = bloom_create(3, count/2+1);
-	map_iter(new_index, bloom_iter_func, b);
+	localindex_to_bloom(new_index, b);
 	unsigned char hash[HASHLEN];
 	sha3(b->bits, b->l+32, hash, HASHLEN);
 	char label[2*HASHLEN+1];
@@ -560,7 +547,7 @@ int backup_main(int argc, char **argv, char *progname)
 	for (int i=0; i<HASHLEN; i++) fprintf(f, "%.2x", root_hash[i]);
 	fprintf(f, "\n");
 	if (want_bloom) {
-		emit_bloom(f, out, new_index.m);
+		emit_bloom(f, out, &new_index);
 	}
 	fclose(f);
 

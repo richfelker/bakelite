@@ -57,7 +57,18 @@ int localindex_getblock(const struct localindex *idx, const unsigned char *key, 
 	return 1;
 }
 
-int localindex_setino(const struct localindex *idx, dev_t dev, ino_t ino, off_t block, const unsigned char *val)
+static void bloom_iter_func(const char *k, const void *v, void *ctx)
+{
+	if (strchr(k, '.')) return;
+	bloom_add(ctx, v, HASHLEN);
+}
+
+void localindex_to_bloom(const struct localindex *idx, struct bloom *b)
+{
+	map_iter(idx->m, bloom_iter_func, b);
+}
+
+int localindex_setino(struct localindex *idx, dev_t dev, ino_t ino, off_t block, const unsigned char *val)
 {
 	char label[100];
 	size_t len = make_ino_label(label, sizeof label, idx, dev, ino, block);
@@ -69,16 +80,18 @@ int localindex_setino(const struct localindex *idx, dev_t dev, ino_t ino, off_t 
 	char *p = malloc(HASHLEN);
 	if (!p) return -1;
 	memcpy(p, val, HASHLEN);
+	if (block<0) idx->obj_count++;
 	return map_set(idx->m, label, p);
 }
 
-int localindex_setblock(const struct localindex *idx, const unsigned char *key, const unsigned char *val)
+int localindex_setblock(struct localindex *idx, const unsigned char *key, const unsigned char *val)
 {
 	char hexkey[2*HASHLEN+1], hexval[2*HASHLEN+1];
 	if (fprintf(idx->txt, "%s %s\n", bin2hex(hexkey, key, HASHLEN), bin2hex(hexval, val, HASHLEN)) < 0) return -1;
 	char *p = malloc(HASHLEN);
 	if (!p) return -1;
 	memcpy(p, val, HASHLEN);
+	idx->obj_count++;
 	return map_set(idx->m, hexkey, p);
 }
 
@@ -97,6 +110,7 @@ int localindex_create(struct localindex *idx, FILE *f, const struct timespec *ts
 	idx->txt = f;
 	idx->ts = *ts;
 	idx->devmap = devmap;
+	idx->obj_count = 0;
 	
 	fprintf(f, "timestamp %lld.%.9ld\n", (long long)ts->tv_sec, ts->tv_nsec);
 	fprintf(f, "index\n");
@@ -112,6 +126,7 @@ int localindex_open(struct localindex *idx, FILE *f, const struct map *devmap)
 	idx->m = map_create();
 	if (!idx->m) goto fail;
 	idx->devmap = devmap;
+	idx->obj_count = -1; // unknown
 
 	char buf[256];
 	while (fgets(buf, sizeof buf, f)) {
