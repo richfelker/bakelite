@@ -3,11 +3,12 @@
 
 #include <stdio.h>
 #include <sys/types.h>
+#include "flatmap.h"
 
 struct localindex {
 	struct timespec ts;
 	FILE *txt;
-	struct map *m;
+	struct flatmap m;
 	const struct map *devmap;
 	long long obj_count;
 };
