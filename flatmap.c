@@ -127,6 +127,41 @@ int flatmap_set(struct flatmap *m, const unsigned char *k, size_t kl, const void
 	return 0;
 }
 
+static int do_iter(const struct flatmap *m, off_t off,
+	void (*f)(off_t, const unsigned char *, const unsigned char *, void *),
+	unsigned char *key, size_t kl, unsigned char *val, size_t vl, int depth, void *ctx)
+{
+	uint64_t table[17];
+	if (pread_wrap(m->fd, table, sizeof table, off) != sizeof table)
+		return -1;
+	for (int i=0; i<17; i++) {
+		int64_t p = le64toh(table[i]);
+		if (p & INT64_MIN) {
+			p &= INT64_MAX;
+			if (p == INT64_MAX) continue;
+			if (pread_wrap(m->fd, key, 1+kl, p) != 1+kl)
+				return -1;
+			if (key[0] != kl) continue;
+			if (pread_wrap(m->fd, val, vl, p+1+kl) != vl)
+				return -1;
+			f(p, key, val, ctx);
+		} else if (depth) {
+			if (do_iter(m, p, f, key, kl, val, vl, depth-1, ctx) < 0)
+				return -1;
+		}
+	}
+	return 0;
+}
+
+int flatmap_iter(const struct flatmap *m,
+	void (*f)(off_t, const unsigned char *, const unsigned char *, void *),
+	size_t kl, size_t vl, int depth, void *ctx)
+{
+	unsigned char key[kl];
+	unsigned char val[vl];
+	return do_iter(m, m->off0, f, key, kl, val, vl, depth, ctx);
+}
+
 struct header {
 	char magic[16];
 	uint64_t start;
