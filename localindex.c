@@ -46,8 +46,8 @@ int localindex_getino(const struct localindex *idx, dev_t dev, ino_t ino, off_t 
 	size_t len = make_ino_label(label, sizeof label, idx, dev, ino, block);
 	unsigned char hash[HASHLEN+1];
 	sha3(label, len, hash, HASHLEN);
-	hash[HASHLEN] = block<0 ? 'i' : 'b';
-	off_t off = flatmap_get(&idx->m, hash, HASHLEN+1, result, result ? HASHLEN : 0);
+	hash[HASHLEN] = 'b';
+	off_t off = flatmap_get(&idx->m, hash, HASHLEN+(block>=0), result, result ? HASHLEN : 0);
 	return off<0 ? -1 : !off ? 0 : 1;
 }
 
@@ -74,11 +74,11 @@ int localindex_setino(struct localindex *idx, dev_t dev, ino_t ino, off_t block,
 	size_t len = make_ino_label(label, sizeof label, idx, dev, ino, block);
 	unsigned char hash[HASHLEN+1];
 	sha3(label, len, hash, HASHLEN);
-	hash[HASHLEN] = block<0 ? 'i' : 'b';
+	hash[HASHLEN] = 'b';
 	char hexval[2*HASHLEN+1];
 	if (fprintf(idx->txt, "%s %s\n", label, bin2hex(hexval, val, HASHLEN)) < 0) return -1;
 	if (block<0) idx->obj_count++;
-	return flatmap_set(&idx->m, hash, HASHLEN+1, val, HASHLEN);
+	return flatmap_set(&idx->m, hash, HASHLEN+(block>=0), val, HASHLEN);
 }
 
 int localindex_setblock(struct localindex *idx, const unsigned char *key, const unsigned char *val)
@@ -157,8 +157,8 @@ int localindex_open(struct localindex *idx, FILE *f, const struct map *devmap)
 			kl = HASHLEN;
 		} else {
 			sha3(buf, p1, key, HASHLEN);
-			key[HASHLEN] = strchr(buf, '.') ? 'b' : 'i';
-			kl = HASHLEN+1;
+			key[HASHLEN] = 'b';
+			kl = HASHLEN+!!strchr(buf, '.');
 		}
 		if (flatmap_set(&idx->m, key, kl, val, HASHLEN)<0)
 			goto fail;
