@@ -71,7 +71,6 @@ static int emit_file_blocks(FILE *in, FILE *out, dev_t dev, ino_t ino, FILE *blo
 	unsigned char *buf = ctx->blockbuf;
 
 	// format of block, 0=raw is the only one defined now
-	*(uint32_t *)buf = 0;
 	for (long long idx=0; ; idx++) {
 		size_t len = fread(buf+4, 1, bsize, in);
 		if (!len) {
@@ -79,7 +78,9 @@ static int emit_file_blocks(FILE *in, FILE *out, dev_t dev, ino_t ino, FILE *blo
 			return err ? -1 : 0;
 		}
 		unsigned char hash[HASHLEN];
-		sha3(buf+4, len, hash, HASHLEN);
+		memcpy(buf, "blk", 4);
+		sha3(buf, len+4, hash, HASHLEN);
+		memcpy(buf, "\0\0\0", 4);
 		if (localindex_setino(new_index, dev, ino, idx, hash) < 0)
 			goto fail;
 
