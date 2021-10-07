@@ -325,28 +325,6 @@ fail:
 	return -1;
 }
 
-struct drop_ctx {
-	FILE *f;
-	const struct map *new_index;
-};
-
-static void iter_func(const char *k, const void *v, void *ctx)
-{
-	struct drop_ctx *dc = ctx;
-	void *v2 = map_get(dc->new_index, k);
-	if (v2 && !memcmp(v2, v, HASHLEN)) return;
-	FILE *f = dc->f;
-	fprintf(f, "drop ");
-	for (int i=0; i<HASHLEN; i++) fprintf(f, "%.2x", ((unsigned char *)v)[i]);
-	fprintf(f, "\n");
-}
-
-static void emit_drops(FILE *f, const struct map *prev_index, const struct map *new_index)
-{
-	struct drop_ctx dc = { .f = f, .new_index = new_index };
-	map_iter(prev_index, iter_func, &dc);
-}
-
 static void count_iter_func(const char *k, const void *v, void *ctx)
 {
 	if (strchr(k, '.')) return;
@@ -389,7 +367,6 @@ int backup_main(int argc, char **argv, char *progname)
 	int out_piped = 0;
 	int commit_on_success = 0;
 	struct stat st;
-	int want_drops = 1;
 	int want_bloom = 1;
 
 	while ((c=getopt(argc, argv, "cb:xs:o:")) >= 0) switch (c) {
@@ -582,9 +559,6 @@ int backup_main(int argc, char **argv, char *progname)
 	fprintf(f, "root ");
 	for (int i=0; i<HASHLEN; i++) fprintf(f, "%.2x", root_hash[i]);
 	fprintf(f, "\n");
-	if (want_drops) {
-		emit_drops(f, prev_index.m, new_index.m);
-	}
 	if (want_bloom) {
 		emit_bloom(f, out, new_index.m);
 	}
