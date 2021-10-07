@@ -79,7 +79,7 @@ static int emit_file_blocks(FILE *in, FILE *out, dev_t dev, ino_t ino, FILE *blo
 			return err ? -1 : 0;
 		}
 		unsigned char hash[HASHLEN];
-		sha3(buf, len, hash, HASHLEN);
+		sha3(buf+4, len, hash, HASHLEN);
 		if (localindex_setino(new_index, dev, ino, idx, hash) < 0)
 			goto fail;
 
