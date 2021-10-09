@@ -87,7 +87,7 @@ int localindex_setblock(struct localindex *idx, const unsigned char *key, const 
 int localindex_null(struct localindex *idx)
 {
 	FILE *tmp = tmpfile();
-	flatmap_create(&idx->m, dup(fileno(tmp)), 0, 0);
+	flatmap_create(&idx->m, dup(fileno(tmp)), 0, 0, 4096);
 	fclose(tmp);
 
 	idx->devmap = map_create();
@@ -101,7 +101,7 @@ int localindex_create(struct localindex *idx, FILE *f, const struct timespec *ts
 	idx->devmap = devmap;
 	idx->obj_count = 0;
 
-	if (flatmap_create(&idx->m, fileno(f), 0, 0) < 0)
+	if (flatmap_create(&idx->m, fileno(f), 0, 0, 128<<20) < 0)
 		return -1;
 
 	char buf[256];
@@ -120,7 +120,7 @@ int localindex_open(struct localindex *idx, FILE *f, const struct map *devmap)
 	idx->devmap = devmap;
 	idx->obj_count = -1; // unknown
 
-	if (flatmap_open(&idx->m, fileno(f)) < 0)
+	if (flatmap_open(&idx->m, fileno(f), 128<<20) < 0)
 		return -1;
 
 	unsigned char hash[HASHLEN];

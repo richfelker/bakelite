@@ -5,13 +5,15 @@
 
 struct flatmap {
 	int fd;
-	off_t off0;
+	off_t off0, maxoff;
+	unsigned char *mm;
+	size_t mmlen;
 };
 
 off_t flatmap_get(const struct flatmap *m, const unsigned char *k, size_t kl, void *val, size_t vl);
 int flatmap_set(struct flatmap *m, const unsigned char *k, size_t kl, const void *val, size_t vl);
-int flatmap_create(struct flatmap *m, int fd, const void *comment, size_t comment_len);
-int flatmap_open(struct flatmap *m, int fd);
+int flatmap_create(struct flatmap *m, int fd, const void *comment, size_t comment_len, size_t mmsize);
+int flatmap_open(struct flatmap *m, int fd, size_t mmsize);
 
 int flatmap_iter(const struct flatmap *m,
 	void (*f)(off_t, const unsigned char *, const unsigned char *, void *),
