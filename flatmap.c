@@ -88,7 +88,7 @@ off_t flatmap_get(const struct flatmap *m, const unsigned char *k, size_t kl, vo
 	return off+tail[0]+1;
 }
 
-int flatmap_set(struct flatmap *m, const unsigned char *k, size_t kl, const void *val, size_t vl)
+off_t flatmap_set(struct flatmap *m, const unsigned char *k, size_t kl, const void *val, size_t vl)
 {
 	unsigned char tail[257];
 	int64_t last;
@@ -124,7 +124,7 @@ int flatmap_set(struct flatmap *m, const unsigned char *k, size_t kl, const void
 
 	if (off == 0) {
 		flatmap_write(m, &(uint64_t){ htole64(new|INT64_MIN) }, 8, last);
-		return 0;
+		return new+1+kl;
 	}
 
 //printf("prefix %d\n", (int)(depth+i));
@@ -142,7 +142,7 @@ int flatmap_set(struct flatmap *m, const unsigned char *k, size_t kl, const void
 	table[depth+i<2*tail[0] ? N(tail+1,depth+i) : 16] = htole64(off|INT64_MIN);
 	flatmap_write(m, table, sizeof table, nextpos);
 	flatmap_write(m, &(uint64_t){ htole64(split) }, 8, last);
-	return 0;
+	return new+1+kl;
 }
 
 static int do_iter(const struct flatmap *m, off_t off,
