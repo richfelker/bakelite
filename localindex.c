@@ -75,13 +75,13 @@ int localindex_setino(struct localindex *idx, dev_t dev, ino_t ino, off_t block,
 	sha3(label, len, hash, HASHLEN);
 	hash[HASHLEN] = 'b';
 	if (block<0) idx->obj_count++;
-	return flatmap_set(&idx->m, hash, HASHLEN+(block>=0), val, HASHLEN);
+	return flatmap_set(&idx->m, hash, HASHLEN+(block>=0), val, HASHLEN) >= 0 ? 0 : -1;
 }
 
 int localindex_setblock(struct localindex *idx, const unsigned char *key, const unsigned char *val)
 {
 	idx->obj_count++;
-	return flatmap_set(&idx->m, key, HASHLEN, val, HASHLEN);
+	return flatmap_set(&idx->m, key, HASHLEN, val, HASHLEN) >= 0 ? 0 : -1;
 }
 
 int localindex_null(struct localindex *idx)
