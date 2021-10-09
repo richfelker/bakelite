@@ -465,7 +465,7 @@ int backup_main(int argc, char **argv, char *progname)
 	if (f) {
 		if (localindex_open(&prev_index, f, dev_map) < 0)
 			return 1;
-		fclose(f);
+		//fclose(f); // FIXME: close at right point
 	} else if (errno == ENOENT) {
 		if (localindex_null(&prev_index) < 0)
 			return 1;
@@ -479,7 +479,7 @@ int backup_main(int argc, char **argv, char *progname)
 		exit(1);
 	}
 
-	f = ffopenat(d, "index.pending", O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC, 0600);
+	f = ffopenat(d, "index.pending", O_RDWR|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC, 0600);
 	if (f) {
 		if (localindex_create(&new_index, f, &ts0, dev_map) < 0)
 			return 1;
@@ -538,7 +538,7 @@ int backup_main(int argc, char **argv, char *progname)
 	unsigned char root_hash[HASHLEN];
 	if (walk(root_hash, base_fd, &ctx) < 0)
 		exit(1);
-	fclose(f);
+	//fclose(f); // FIXME: close at right point
 
 	char *sumdata;
 	size_t sumsize;

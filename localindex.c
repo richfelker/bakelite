@@ -74,16 +74,12 @@ int localindex_setino(struct localindex *idx, dev_t dev, ino_t ino, off_t block,
 	unsigned char hash[HASHLEN+1];
 	sha3(label, len, hash, HASHLEN);
 	hash[HASHLEN] = 'b';
-	char hexval[2*HASHLEN+1];
-	if (fprintf(idx->txt, "%s %s\n", label, bin2hex(hexval, val, HASHLEN)) < 0) return -1;
 	if (block<0) idx->obj_count++;
 	return flatmap_set(&idx->m, hash, HASHLEN+(block>=0), val, HASHLEN);
 }
 
 int localindex_setblock(struct localindex *idx, const unsigned char *key, const unsigned char *val)
 {
-	char hexkey[2*HASHLEN+1], hexval[2*HASHLEN+1];
-	if (fprintf(idx->txt, "%s %s\n", bin2hex(hexkey, key, HASHLEN), bin2hex(hexval, val, HASHLEN)) < 0) return -1;
 	idx->obj_count++;
 	return flatmap_set(&idx->m, key, HASHLEN, val, HASHLEN);
 }
@@ -101,70 +97,45 @@ int localindex_null(struct localindex *idx)
 
 int localindex_create(struct localindex *idx, FILE *f, const struct timespec *ts, const struct map *devmap)
 {
-	FILE *tmp = tmpfile();
-	flatmap_create(&idx->m, dup(fileno(tmp)), 0, 0);
-	fclose(tmp);
-
-	idx->txt = f;
 	idx->ts = *ts;
 	idx->devmap = devmap;
 	idx->obj_count = 0;
-	
-	fprintf(f, "timestamp %lld.%.9ld\n", (long long)ts->tv_sec, ts->tv_nsec);
-	fprintf(f, "index\n");
 
+	if (flatmap_create(&idx->m, fileno(f), 0, 0) < 0)
+		return -1;
+
+	char buf[256];
+	unsigned char hash[HASHLEN];
+	size_t tslen = snprintf(buf, sizeof buf, "%jd.%.9ld\n", (intmax_t)ts->tv_sec, ts->tv_nsec);
+
+	sha3("ts\0", 4, hash, HASHLEN);
+	if (flatmap_set(&idx->m, hash, HASHLEN, (void *)buf, tslen+1) < 0)
+		return -1;
+	
 	return 0;
-fail:
-	return -1;
 }
 
 int localindex_open(struct localindex *idx, FILE *f, const struct map *devmap)
 {
-	FILE *tmp = tmpfile();
-	flatmap_create(&idx->m, dup(fileno(tmp)), 0, 0);
-	fclose(tmp);
-
 	idx->devmap = devmap;
 	idx->obj_count = -1; // unknown
 
-	char buf[256];
-	while (fgets(buf, sizeof buf, f)) {
-		if (!strncmp(buf, "timestamp ", 10)) {
-			long long t, ns;
-			sscanf(buf+10, "%lld.%lld", &t, &ns);
-			idx->ts.tv_sec = t;
-			idx->ts.tv_nsec = ns;
-		} else if (!strncmp(buf, "index", 5)) {
-			break;
-		}
-	}
+	if (flatmap_open(&idx->m, fileno(f)) < 0)
+		return -1;
 
-	while (fgets(buf, sizeof buf, f)) {
-		int p1 = -1, p2 = -1;
-		sscanf(buf, "%*s%n%*s%n", &p1, &p2);
-		if (p2 < 0) goto fail;
-		buf[p1] = buf[p2] = 0;
+	unsigned char hash[HASHLEN];
+	sha3("ts\0", 4, hash, HASHLEN);
+	off_t off = flatmap_get(&idx->m, hash, HASHLEN, 0, 0);
+	if (off<=0)
+		return -1;
+	fseeko(f, off, SEEK_SET);
+	intmax_t t;
+	long ns;
+	if (fscanf(f, "%jd.%9ld", &t, &ns) != 2)
+		return -1;
+	idx->ts.tv_sec = t;
+	idx->ts.tv_nsec = ns;
 
-		unsigned char key[HASHLEN+1];
-		unsigned char val[HASHLEN];
-		size_t kl;
-
-		hex2bin(val, buf+p1+1, HASHLEN);
-
-		if (p1==2*HASHLEN) {
-			hex2bin(key, buf, HASHLEN);
-			kl = HASHLEN;
-		} else {
-			sha3(buf, p1, key, HASHLEN);
-			key[HASHLEN] = 'b';
-			kl = HASHLEN+!!strchr(buf, '.');
-		}
-		if (flatmap_set(&idx->m, key, kl, val, HASHLEN)<0)
-			goto fail;
-	}
-	if (ferror(f)) goto fail;
-	return 0;
-fail:
 	return 0;
 }
 

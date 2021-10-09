@@ -7,7 +7,6 @@
 
 struct localindex {
 	struct timespec ts;
-	FILE *txt;
 	struct flatmap m;
 	const struct map *devmap;
 	long long obj_count;
