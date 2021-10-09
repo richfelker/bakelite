@@ -10,6 +10,7 @@ struct localindex {
 	struct flatmap m;
 	const struct map *devmap;
 	long long obj_count;
+	off_t ino_table, blk_table, meta_table;
 };
 
 struct bloom;
