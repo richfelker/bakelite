@@ -117,13 +117,16 @@ off_t flatmap_set(struct flatmap *m, const unsigned char *k, size_t kl, const vo
 	unsigned char buf[256];
 	buf[0] = kl;
 	memcpy(buf+1, k, kl);
-	flatmap_write(m, buf, kl+1, nextpos);
+	if (flatmap_write(m, buf, kl+1, nextpos) < 0)
+		return -1;
 	nextpos += kl+1;
-	flatmap_write(m, val, vl, nextpos);
+	if (flatmap_write(m, val, vl, nextpos) < 0)
+		return -1;
 	nextpos += vl;
 
 	if (off == 0) {
-		flatmap_write(m, &(uint64_t){ htole64(new|INT64_MIN) }, 8, last);
+		if (flatmap_write(m, &(uint64_t){ htole64(new|INT64_MIN) }, 8, last) < 0)
+			return -1;
 		return new+1+kl;
 	}
 
@@ -133,15 +136,18 @@ off_t flatmap_set(struct flatmap *m, const unsigned char *k, size_t kl, const vo
 	for (j=0; j+1<i; j++) {
 		int c = N(tail+1,depth+1+j);
 		table[c] = htole64(nextpos + sizeof table);
-		flatmap_write(m, table, sizeof table, nextpos);
+		if (flatmap_write(m, table, sizeof table, nextpos) < 0)
+			return -1;
 		table[c] = -1;
 		nextpos += sizeof table;
 	}
 	table[depth+i<2*kl ? N(k,depth+i) : 16] = htole64(new|INT64_MIN);
 //printf("[%c]\n", tail[1+i]);
 	table[depth+i<2*tail[0] ? N(tail+1,depth+i) : 16] = htole64(off|INT64_MIN);
-	flatmap_write(m, table, sizeof table, nextpos);
-	flatmap_write(m, &(uint64_t){ htole64(split) }, 8, last);
+	if (flatmap_write(m, table, sizeof table, nextpos) < 0)
+		return -1;
+	if (flatmap_write(m, &(uint64_t){ htole64(split) }, 8, last) < 0)
+		return -1;
 	return new+1+kl;
 }
 
