@@ -120,6 +120,13 @@ off_t flatmap_set(struct flatmap *m, const unsigned char *k, size_t kl, const vo
 	if (flatmap_write(m, buf, kl+1, nextpos) < 0)
 		return -1;
 	nextpos += kl+1;
+	if (!val) {
+		// if val is null, only write a final null byte to leave
+		// a gap of length vl for the caller to fill later.
+		val = "";
+		nextpos += vl-1;
+		vl = 1;
+	}
 	if (flatmap_write(m, val, vl, nextpos) < 0)
 		return -1;
 	nextpos += vl;
