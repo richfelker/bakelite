@@ -48,11 +48,11 @@ ssize_t flatmap_write(struct flatmap *m, const void *buf, size_t len, off_t off)
 
 #define N(k,i) ( ((k)[(i)/2]>>4*((i)%2)) % 16 )
 
-static int64_t search(const struct flatmap *m, const unsigned char *k, size_t l, unsigned char *tail, size_t *pdepth, off_t *plast)
+static int64_t search(const struct flatmap *m, off_t root, const unsigned char *k, size_t l, unsigned char *tail, size_t *pdepth, off_t *plast)
 {
 	if (l > 255) return -1;
 	off_t off = 0;
-	int64_t next = m->off0;
+	int64_t next = root ? root : m->off0;
 	size_t i;
 	ssize_t cnt;
 
@@ -76,10 +76,10 @@ static int64_t search(const struct flatmap *m, const unsigned char *k, size_t l,
 	return next;
 }
 
-off_t flatmap_get(const struct flatmap *m, const unsigned char *k, size_t kl, void *val, size_t vl)
+off_t flatmap_get(const struct flatmap *m, off_t root, const unsigned char *k, size_t kl, void *val, size_t vl)
 {
 	unsigned char tail[257];
-	int64_t off = search(m, k, kl, tail, 0, 0);
+	int64_t off = search(m, root, k, kl, tail, 0, 0);
 	if (off<0) return -1;
 	if (!off || tail[0] != kl || memcmp(k, tail+1, kl))
 		return 0;
@@ -88,12 +88,12 @@ off_t flatmap_get(const struct flatmap *m, const unsigned char *k, size_t kl, vo
 	return off+tail[0]+1;
 }
 
-off_t flatmap_set(struct flatmap *m, const unsigned char *k, size_t kl, const void *val, size_t vl)
+off_t flatmap_set(struct flatmap *m, off_t root, const unsigned char *k, size_t kl, const void *val, size_t vl)
 {
 	unsigned char tail[257];
 	int64_t last;
 	size_t depth;
-	int64_t off = search(m, k, kl, tail, &depth, &last);
+	int64_t off = search(m, root, k, kl, tail, &depth, &last);
 	off_t nextpos = lseek(m->fd, 0, SEEK_END);
 	size_t i=0, j;
 	uint64_t table[17];
@@ -158,6 +158,13 @@ off_t flatmap_set(struct flatmap *m, const unsigned char *k, size_t kl, const vo
 	return new+1+kl;
 }
 
+off_t flatmap_newtable(struct flatmap *m, off_t parent, const unsigned char *k, size_t kl)
+{
+	uint64_t table[17];
+	memset(table, -1, sizeof table);
+	return flatmap_set(m, parent, k, kl, table, sizeof table);
+}
+
 static int do_iter(const struct flatmap *m, off_t off,
 	void (*f)(off_t, const unsigned char *, const unsigned char *, void *),
 	unsigned char *key, size_t kl, unsigned char *val, size_t vl, int depth, void *ctx)
@@ -184,13 +191,14 @@ static int do_iter(const struct flatmap *m, off_t off,
 	return 0;
 }
 
-int flatmap_iter(const struct flatmap *m,
+int flatmap_iter(const struct flatmap *m, off_t root,
 	void (*f)(off_t, const unsigned char *, const unsigned char *, void *),
 	size_t kl, size_t vl, int depth, void *ctx)
 {
 	unsigned char key[kl];
 	unsigned char val[vl];
-	return do_iter(m, m->off0, f, key, kl, val, vl, depth, ctx);
+	if (!root) root = m->off0;
+	return do_iter(m, root, f, key, kl, val, vl, depth, ctx);
 }
 
 struct header {
