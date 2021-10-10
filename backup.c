@@ -81,7 +81,7 @@ static int emit_file_blocks(FILE *in, FILE *out, dev_t dev, ino_t ino, FILE *blo
 		memcpy(buf, "blk", 4);
 		sha3(buf, len+4, hash, HASHLEN);
 		memcpy(buf, "\0\0\0", 4);
-		if (localindex_setino(new_index, dev, ino, idx, hash) < 0)
+		if (localindex_setdep(new_index, dev, ino, idx, hash) < 0)
 			goto fail;
 
 		unsigned char blob_id[HASHLEN];
@@ -230,20 +230,20 @@ int walk(unsigned char *roothash, int base_fd, struct ctx *ctx)
 			changed = 1;
 
 		unsigned char ino_hash[HASHLEN];
-		r = localindex_getino(new_index, st.st_dev, st.st_ino, -1, ino_hash);
+		r = localindex_getino(new_index, st.st_dev, st.st_ino, ino_hash);
 		if (r < 0) goto fail;
 		if (r)
 			goto got_hardlink;
 		if (!changed) {
-			r = localindex_getino(prev_index, st.st_dev, st.st_ino, -1, ino_hash);
+			r = localindex_getino(prev_index, st.st_dev, st.st_ino, ino_hash);
 			if (r < 0) goto fail;
 			if (r) {
 				for (uint64_t i=0; ; i++) {
 					unsigned char block_hash[HASHLEN], cipher_hash[HASHLEN];
-					int r = localindex_getino(prev_index, st.st_dev, st.st_ino, i, block_hash);
+					int r = localindex_getdep(prev_index, st.st_dev, st.st_ino, i, block_hash);
 					if (r < 0) goto fail;
 					if (!r) break;
-					r = localindex_setino(new_index, st.st_dev, st.st_ino, i, block_hash);
+					r = localindex_setdep(new_index, st.st_dev, st.st_ino, i, block_hash);
 					r = localindex_getblock(prev_index, block_hash, cipher_hash);
 					if (r <= 0) goto fail;
 					if (!localindex_getblock(new_index, block_hash, 0)) {
@@ -307,7 +307,7 @@ int walk(unsigned char *roothash, int base_fd, struct ctx *ctx)
 
 		if (emit_new_blob(ino_hash, out, data, dlen, &ctx->cc) < 0) goto fail;
 got_ino_hash:
-		if (localindex_setino(new_index, st.st_dev, st.st_ino, -1, ino_hash) < 0)
+		if (localindex_setino(new_index, st.st_dev, st.st_ino, ino_hash) < 0)
 			goto fail;
 got_hardlink:
 		free(data);

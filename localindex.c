@@ -40,14 +40,23 @@ static size_t make_ino_label(char *label, size_t n, const struct localindex *idx
 	return strlen(label);
 }
 
-int localindex_getino(const struct localindex *idx, dev_t dev, ino_t ino, off_t block, unsigned char *result)
+int localindex_getino(const struct localindex *idx, dev_t dev, ino_t ino, unsigned char *result)
+{
+	char label[100];
+	size_t len = make_ino_label(label, sizeof label, idx, dev, ino, -1);
+	unsigned char hash[HASHLEN+1];
+	sha3(label, len, hash, HASHLEN);
+	off_t off = flatmap_get(&idx->m, idx->ino_table, hash, HASHLEN, result, result ? HASHLEN : 0);
+	return off<0 ? -1 : !off ? 0 : 1;
+}
+
+int localindex_getdep(const struct localindex *idx, dev_t dev, ino_t ino, off_t block, unsigned char *result)
 {
 	char label[100];
 	size_t len = make_ino_label(label, sizeof label, idx, dev, ino, block);
 	unsigned char hash[HASHLEN+1];
 	sha3(label, len, hash, HASHLEN);
-	hash[HASHLEN] = 'b';
-	off_t off = flatmap_get(&idx->m, idx->ino_table, hash, HASHLEN+(block>=0), result, result ? HASHLEN : 0);
+	off_t off = flatmap_get(&idx->m, idx->dep_table, hash, HASHLEN, result, result ? HASHLEN : 0);
 	return off<0 ? -1 : !off ? 0 : 1;
 }
 
@@ -68,15 +77,23 @@ void localindex_to_bloom(const struct localindex *idx, struct bloom *b)
 	flatmap_iter(&idx->m, idx->blk_table, bloom_iter_func, HASHLEN, HASHLEN, HASHLEN, b);
 }
 
-int localindex_setino(struct localindex *idx, dev_t dev, ino_t ino, off_t block, const unsigned char *val)
+int localindex_setino(struct localindex *idx, dev_t dev, ino_t ino, const unsigned char *val)
+{
+	char label[100];
+	size_t len = make_ino_label(label, sizeof label, idx, dev, ino, -1);
+	unsigned char hash[HASHLEN+1];
+	sha3(label, len, hash, HASHLEN);
+	idx->obj_count++;
+	return flatmap_set(&idx->m, idx->ino_table, hash, HASHLEN, val, HASHLEN) >= 0 ? 0 : -1;
+}
+
+int localindex_setdep(struct localindex *idx, dev_t dev, ino_t ino, off_t block, const unsigned char *val)
 {
 	char label[100];
 	size_t len = make_ino_label(label, sizeof label, idx, dev, ino, block);
 	unsigned char hash[HASHLEN+1];
 	sha3(label, len, hash, HASHLEN);
-	hash[HASHLEN] = 'b';
-	if (block<0) idx->obj_count++;
-	return flatmap_set(&idx->m, idx->ino_table, hash, HASHLEN+(block>=0), val, HASHLEN) >= 0 ? 0 : -1;
+	return flatmap_set(&idx->m, idx->dep_table, hash, HASHLEN, val, HASHLEN) >= 0 ? 0 : -1;
 }
 
 int localindex_setblock(struct localindex *idx, const unsigned char *key, const unsigned char *val)
@@ -106,10 +123,11 @@ int localindex_create(struct localindex *idx, FILE *f, const struct timespec *ts
 		return -1;
 
 	idx->ino_table = flatmap_newtable(&idx->m, 0, "inodes", 6);
+	idx->dep_table = flatmap_newtable(&idx->m, 0, "deps", 4);
 	idx->blk_table = flatmap_newtable(&idx->m, 0, "blocks", 6);
 	idx->meta_table = flatmap_newtable(&idx->m, 0, "meta", 4);
 
-	if (idx->ino_table < 0 || idx->blk_table < 0 || idx->meta_table < 0)
+	if (idx->ino_table < 0 || idx->dep_table < 0 || idx->blk_table < 0 || idx->meta_table < 0)
 		return -1;
 
 	char buf[256];
@@ -130,10 +148,11 @@ int localindex_open(struct localindex *idx, FILE *f, const struct map *devmap)
 		return -1;
 
 	idx->ino_table = flatmap_get(&idx->m, 0, "inodes", 6, 0, 0);
+	idx->dep_table = flatmap_get(&idx->m, 0, "deps", 4, 0, 0);
 	idx->blk_table = flatmap_get(&idx->m, 0, "blocks", 6, 0, 0);
 	idx->meta_table = flatmap_get(&idx->m, 0, "meta", 4, 0, 0);
 
-	if (idx->ino_table < 0 || idx->blk_table < 0 || idx->meta_table < 0)
+	if (idx->ino_table < 0 || idx->dep_table < 0 || idx->blk_table < 0 || idx->meta_table < 0)
 		return -1;
 
 	unsigned char tslen;
