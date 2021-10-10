@@ -32,7 +32,7 @@ int emit_file_record(FILE *f, const char *name, size_t len)
 	int sum = 0;
 	for (int i=0; i<sizeof h; i++)
 		sum += ((unsigned char *)&h)[i];
-	snprintf(h.cksum, sizeof h.cksum, "%.6zo", sum);
+	snprintf(h.cksum, sizeof h.cksum, "%.6o", sum);
 	fwrite(&h, 1, sizeof h, f);
 	return 0;
 }
