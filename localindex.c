@@ -28,25 +28,27 @@ static unsigned char *hex2bin(unsigned char *bin, const char *hex, size_t n)
 
 static size_t make_ino_label(char *label, size_t n, const struct localindex *idx, dev_t dev, ino_t ino, off_t block)
 {
-	char devbuf[16], *devname, sep = '/';
+	char devbuf[2*sizeof(intmax_t)+1], *devname, sep = '/';
 	snprintf(devbuf, sizeof devbuf, "%jx", (intmax_t)dev);
 	devname = map_get(idx->devmap, devbuf);
 	if (!devname) {
 		devname = devbuf;
 		sep = ':';
 	}
-	snprintf(label, n, "%s%c%ju%c%jd", devname, sep,
+	snprintf(label+4, n-4, "%s%c%ju%c%jd", devname, sep,
 		(intmax_t)ino, block<0?0:'.', (intmax_t)block);
-	return strlen(label);
+	size_t len = strlen(label+4);
+	unsigned char hash[HASHLEN];
+	sha3(label+4, len, hash, HASHLEN);
+	memcpy(label, hash, 4);
+	return len+4;
 }
 
 int localindex_getino(const struct localindex *idx, dev_t dev, ino_t ino, unsigned char *result)
 {
 	char label[100];
 	size_t len = make_ino_label(label, sizeof label, idx, dev, ino, -1);
-	unsigned char hash[HASHLEN+1];
-	sha3(label, len, hash, HASHLEN);
-	off_t off = flatmap_get(&idx->m, idx->ino_table, hash, HASHLEN, result, result ? HASHLEN : 0);
+	off_t off = flatmap_get(&idx->m, idx->ino_table, label, len, result, result ? HASHLEN : 0);
 	return off<0 ? -1 : !off ? 0 : 1;
 }
 
@@ -54,9 +56,7 @@ int localindex_getdep(const struct localindex *idx, dev_t dev, ino_t ino, off_t 
 {
 	char label[100];
 	size_t len = make_ino_label(label, sizeof label, idx, dev, ino, block);
-	unsigned char hash[HASHLEN+1];
-	sha3(label, len, hash, HASHLEN);
-	off_t off = flatmap_get(&idx->m, idx->dep_table, hash, HASHLEN, result, result ? HASHLEN : 0);
+	off_t off = flatmap_get(&idx->m, idx->dep_table, label, len, result, result ? HASHLEN : 0);
 	return off<0 ? -1 : !off ? 0 : 1;
 }
 
@@ -85,19 +85,15 @@ int localindex_setino(struct localindex *idx, dev_t dev, ino_t ino, const unsign
 {
 	char label[100];
 	size_t len = make_ino_label(label, sizeof label, idx, dev, ino, -1);
-	unsigned char hash[HASHLEN+1];
-	sha3(label, len, hash, HASHLEN);
 	idx->obj_count++;
-	return flatmap_set(&idx->m, idx->ino_table, hash, HASHLEN, val, HASHLEN) >= 0 ? 0 : -1;
+	return flatmap_set(&idx->m, idx->ino_table, label, len, val, HASHLEN) >= 0 ? 0 : -1;
 }
 
 int localindex_setdep(struct localindex *idx, dev_t dev, ino_t ino, off_t block, const unsigned char *val)
 {
 	char label[100];
 	size_t len = make_ino_label(label, sizeof label, idx, dev, ino, block);
-	unsigned char hash[HASHLEN+1];
-	sha3(label, len, hash, HASHLEN);
-	return flatmap_set(&idx->m, idx->dep_table, hash, HASHLEN, val, HASHLEN) >= 0 ? 0 : -1;
+	return flatmap_set(&idx->m, idx->dep_table, label, len, val, HASHLEN) >= 0 ? 0 : -1;
 }
 
 int localindex_setblock(struct localindex *idx, const unsigned char *key, const unsigned char *val)
