@@ -418,6 +418,10 @@ int backup_main(int argc, char **argv, char *progname)
 				if (!de->d_name[1]) continue;
 				if (de->d_name[1] == '.' && !de->d_name[2]) continue;
 			}
+			if (strlen(de->d_name) > 16) {
+				fprintf(stderr, "device name too long: %s\n", de->d_name);
+				return -1;
+			}
 			if (!fstatat(dirfd(devdir), de->d_name, &st, 0)) {
 				char dev_label[2*sizeof(uintmax_t)+1];
 				snprintf(dev_label, sizeof dev_label, "%jx", (uintmax_t)st.st_dev);
