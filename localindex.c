@@ -118,8 +118,9 @@ int localindex_create(struct localindex *idx, FILE *f, const struct timespec *ts
 	idx->ts = *ts;
 	idx->devmap = devmap;
 	idx->obj_count = 0;
+	char label[] = "bakelite index\n";
 
-	if (flatmap_create(&idx->m, fileno(f), 0, 0, 128<<20) < 0)
+	if (flatmap_create(&idx->m, fileno(f), label, sizeof label, 128<<20) < 0)
 		return -1;
 
 	idx->ino_table = flatmap_newtable(&idx->m, 0, "inodes", 6);
