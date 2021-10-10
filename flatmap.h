@@ -19,7 +19,6 @@ int flatmap_create(struct flatmap *m, int fd, const void *comment, size_t commen
 int flatmap_open(struct flatmap *m, int fd, size_t mmsize);
 
 int flatmap_iter(const struct flatmap *m, off_t root,
-	void (*f)(off_t, const unsigned char *, const unsigned char *, void *),
-	size_t kl, size_t vl, int depth, void *ctx);
+	int (*f)(const struct flatmap *, off_t, size_t, const void *, void *), void *ctx);
 
 #endif

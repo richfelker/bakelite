@@ -166,8 +166,8 @@ off_t flatmap_newtable(struct flatmap *m, off_t parent, const void *k, size_t kl
 }
 
 static int do_iter(const struct flatmap *m, off_t off,
-	void (*f)(off_t, const unsigned char *, const unsigned char *, void *),
-	unsigned char *key, size_t kl, unsigned char *val, size_t vl, int depth, void *ctx)
+	int (*f)(const struct flatmap *, off_t, size_t, const void *, void *),
+	unsigned char *key, int depth, void *ctx)
 {
 	uint64_t table[17];
 	if (flatmap_read(m, table, sizeof table, off) != sizeof table)
@@ -177,14 +177,14 @@ static int do_iter(const struct flatmap *m, off_t off,
 		if (p & INT64_MIN) {
 			p &= INT64_MAX;
 			if (p == INT64_MAX) continue;
-			if (flatmap_read(m, key, 1+kl, p) != 1+kl)
+			ssize_t r = flatmap_read(m, key, 257, p);
+			if (r<1 || r<key[0])
 				return -1;
-			if (key[0] != kl) continue;
-			if (flatmap_read(m, val, vl, p+1+kl) != vl)
+			if (f(m, p+1+key[0], key[0], key+1, ctx) < 0)
 				return -1;
-			f(p, key, val, ctx);
-		} else if (depth) {
-			if (do_iter(m, p, f, key, kl, val, vl, depth-1, ctx) < 0)
+		} else {
+			if (!depth) return -1;
+			if (do_iter(m, p, f, key, depth-1, ctx) < 0)
 				return -1;
 		}
 	}
@@ -192,13 +192,11 @@ static int do_iter(const struct flatmap *m, off_t off,
 }
 
 int flatmap_iter(const struct flatmap *m, off_t root,
-	void (*f)(off_t, const unsigned char *, const unsigned char *, void *),
-	size_t kl, size_t vl, int depth, void *ctx)
+	int (*f)(const struct flatmap *, off_t, size_t, const void *, void *), void *ctx)
 {
-	unsigned char key[kl];
-	unsigned char val[vl];
+	unsigned char key[257];
 	if (!root) root = m->off0;
-	return do_iter(m, root, f, key, kl, val, vl, depth, ctx);
+	return do_iter(m, root, f, key, 256, ctx);
 }
 
 struct header {

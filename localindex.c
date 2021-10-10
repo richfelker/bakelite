@@ -66,15 +66,19 @@ int localindex_getblock(const struct localindex *idx, const unsigned char *key, 
 	return off<0 ? -1 : !off ? 0 : 1;
 }
 
-static void bloom_iter_func(off_t off, const unsigned char *k, const unsigned char *v, void *ctx)
+static int bloom_iter_func(const struct flatmap *m, off_t off, size_t kl, const void *k, void *ctx)
 {
-	bloom_add(ctx, v, HASHLEN);
+	unsigned char val[HASHLEN];
+	ssize_t r = flatmap_read(m, val, HASHLEN, off);
+	if (r != HASHLEN) return -1;
+	bloom_add(ctx, val, HASHLEN);
+	return 0;
 }
 
 void localindex_to_bloom(const struct localindex *idx, struct bloom *b)
 {
-	flatmap_iter(&idx->m, idx->ino_table, bloom_iter_func, HASHLEN, HASHLEN, HASHLEN, b);
-	flatmap_iter(&idx->m, idx->blk_table, bloom_iter_func, HASHLEN, HASHLEN, HASHLEN, b);
+	flatmap_iter(&idx->m, idx->ino_table, bloom_iter_func, b);
+	flatmap_iter(&idx->m, idx->blk_table, bloom_iter_func, b);
 }
 
 int localindex_setino(struct localindex *idx, dev_t dev, ino_t ino, const unsigned char *val)
