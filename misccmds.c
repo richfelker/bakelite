@@ -100,7 +100,7 @@ int pubkey_main(int argc, char **argv, char *progname)
 	fclose(f);
 
 	x25519_scalarmult(key, key, (unsigned char[32]){9});
-	if (fwrite(key, 1, sizeof key, stdout) || fflush(stdout)) {
+	if (fwrite(key, 1, sizeof key, stdout) != sizeof key || fflush(stdout)) {
 		perror("error writing output");
 		return 1;
 	}
