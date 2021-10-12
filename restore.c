@@ -78,11 +78,6 @@ void *load_and_decrypt_file(size_t *size, unsigned char *computed_hash, const ch
 	return buf;
 }
 
-static void hashtostr(char *name, const unsigned char *hash)
-{
-	for (int i=0; i<HASHLEN; i++) snprintf(name+2*i, sizeof name - 2*i, "%.2x", hash[i]);
-}
-
 void *load_and_decrypt_hash(size_t *size, const unsigned char *hash, struct decrypt_context *dc)
 {
 	char name[2*HASHLEN+1];
@@ -208,7 +203,7 @@ static int do_restore(const char *dest, const unsigned char *roothash, struct ct
 		if (S_ISREG(cur->mode)) {
 			if (nlink > 1) {
 				char hashstr[2*HASHLEN+1];
-				hashtostr(hashstr, cur->hash);
+				bin2hex(hashstr, cur->hash, HASHLEN);
 				char *linkto = map_get(hardlink_map, hashstr);
 				if (linkto) {
 					if (linkat(AT_FDCWD, linkto, cur->parent->fd, cur->name, 0)) {
