@@ -13,12 +13,24 @@
 #include "sha3.h"
 #include "map.h"
 
+struct decrypt_context {
+	const unsigned char *rcpt_secret;
+	struct map *ephemeral_map;
+};
+
+static char *bin2hex(char *hex, const unsigned char *bin, size_t n)
+{
+	for (int i=0; i<n; i++)
+		sprintf(hex+2*i, "%.2x", bin[i]);
+	return hex;
+}
+
 static int dupe(int fd)
 {
 	return fcntl(fd, F_DUPFD_CLOEXEC, 0);
 }
 
-void *load_and_decrypt_file(size_t *size, unsigned char *computed_hash, const char *name, const unsigned char *rcpt_secret)
+void *load_and_decrypt_file(size_t *size, unsigned char *computed_hash, const char *name, struct decrypt_context *dc)
 {
 	int fd = open(name, O_RDONLY|O_CLOEXEC);
 	struct stat st;
@@ -42,11 +54,17 @@ void *load_and_decrypt_file(size_t *size, unsigned char *computed_hash, const ch
 	sha3_update(&h, &nonce, sizeof nonce);
 	nonce = le64toh(nonce);
 
-	unsigned char shared_secret[32];
-	x25519_scalarmult(shared_secret, rcpt_secret, ephemeral_public);
-	uint32_t key[8];
-	sha3(shared_secret, sizeof shared_secret, key, sizeof key);
-	for (int i=0; i<8; i++) key[i] = le32toh(key[i]);
+	char ephemeral_hex[65];
+	bin2hex(ephemeral_hex, ephemeral_public, 32);
+	uint32_t *key = map_get(dc->ephemeral_map, ephemeral_hex);
+	if (!key) {
+		unsigned char shared_secret[32];
+		x25519_scalarmult(shared_secret, dc->rcpt_secret, ephemeral_public);
+		key = malloc(32);
+		sha3(shared_secret, sizeof shared_secret, key, 32);
+		for (int i=0; i<8; i++) key[i] = le32toh(key[i]);
+		map_set(dc->ephemeral_map, ephemeral_hex, key);
+	}
 
 	size_t len = st.st_size-40;
 	fread(buf, 1, len, f);
@@ -65,12 +83,12 @@ static void hashtostr(char *name, const unsigned char *hash)
 	for (int i=0; i<HASHLEN; i++) snprintf(name+2*i, sizeof name - 2*i, "%.2x", hash[i]);
 }
 
-void *load_and_decrypt_hash(size_t *size, const unsigned char *hash, const unsigned char *rcpt_secret)
+void *load_and_decrypt_hash(size_t *size, const unsigned char *hash, struct decrypt_context *dc)
 {
 	char name[2*HASHLEN+1];
 	for (int i=0; i<HASHLEN; i++) snprintf(name+2*i, sizeof name - 2*i, "%.2x", hash[i]);
 	unsigned char computed_hash[HASHLEN];
-	void *buf = load_and_decrypt_file(size, computed_hash, name, rcpt_secret);
+	void *buf = load_and_decrypt_file(size, computed_hash, name, dc);
 	if (buf) {
 		if (memcmp(hash, computed_hash, HASHLEN)) {
 			fprintf(stderr, "%s hash mismatch\n", name);
@@ -90,7 +108,7 @@ static struct timespec strtots(const char *s0)
 
 struct ctx {
 	//struct crypto_context cc;
-	const unsigned char *rcpt_secret;
+	struct decrypt_context dc;
 	long long errorcnt;
 };
 
@@ -112,7 +130,7 @@ static int do_restore(const char *dest, const unsigned char *roothash, struct ct
 	struct level *cur = calloc(1, sizeof *cur);
 	struct map *hardlink_map = map_create();
 	cur->name = dest;
-	cur->data = load_and_decrypt_hash(&cur->dlen, roothash, ctx->rcpt_secret);
+	cur->data = load_and_decrypt_hash(&cur->dlen, roothash, &ctx->dc);
 	if (!cur->data) goto fail;
 	for (;;) {
 		int got_blocks = 0;
@@ -175,7 +193,7 @@ static int do_restore(const char *dest, const unsigned char *roothash, struct ct
 			new->fd = -1;
 			if (cur->pos+HASHLEN >= cur->dlen) goto fail;
 			new->hash = cur->data+cur->pos;
-			new->data = load_and_decrypt_hash(&new->dlen, new->hash, ctx->rcpt_secret);
+			new->data = load_and_decrypt_hash(&new->dlen, new->hash, &ctx->dc);
 			cur->pos += HASHLEN;
 			size_t namelen = strnlen((char *)cur->data+cur->pos, cur->dlen-cur->pos);
 			if (cur->data[cur->pos+namelen]) goto fail;
@@ -212,7 +230,7 @@ static int do_restore(const char *dest, const unsigned char *roothash, struct ct
 			if (got_blocks) {
 				for (; cur->pos+HASHLEN <= cur->dlen; cur->pos+=HASHLEN) {
 					size_t blen;
-					unsigned char *block = load_and_decrypt_hash(&blen, cur->data+cur->pos, ctx->rcpt_secret);
+					unsigned char *block = load_and_decrypt_hash(&blen, cur->data+cur->pos, &ctx->dc);
 					if (blen < 4) goto fail;
 					fwrite(block+4, 1, blen-4, f);
 					free(block);
@@ -313,7 +331,10 @@ int restore_main(int argc, char **argv, char *progname)
 	fread(rcpt_secret, 1, 32, kf);
 	fclose(kf);
 
-	struct ctx ctx = { .rcpt_secret = rcpt_secret };
+	struct ctx ctx = {
+		.dc.rcpt_secret = rcpt_secret,
+		.dc.ephemeral_map = map_create(),
+	};
 	unsigned char roothash[HASHLEN];
 	if (strlen(roothash_string) != 2*HASHLEN) {
 		fprintf(stderr, "invalid hash %s\n", roothash_string);
