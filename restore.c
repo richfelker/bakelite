@@ -267,6 +267,7 @@ static int do_restore(const char *dest, const unsigned char *roothash, struct ct
 ino_done:
 		if (cur->fd >= 0) close(cur->fd);
 		struct level *parent = cur->parent;
+		free((void *)cur->data);
 		free(cur);
 		cur = parent;
 		if (!cur) return ctx->errorcnt>0 ? -1 : 0;
