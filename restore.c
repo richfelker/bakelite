@@ -107,6 +107,7 @@ struct ctx {
 	long long errorcnt;
 	int verbose;
 	int progress;
+	int stop_on_errors;
 };
 
 struct level {
@@ -122,7 +123,7 @@ struct level {
 	struct level *parent, *child;
 };
 
-static int fprint_pathname(FILE *f, struct level *lev)
+static int fprint_pathname(FILE *f, const struct level *lev)
 {
 	for (; lev->parent; lev=lev->parent);
 	for (; lev; lev=lev->child)
@@ -131,7 +132,7 @@ static int fprint_pathname(FILE *f, struct level *lev)
 	return 0;
 }
 
-static char *aprint_pathname(struct level *lev)
+static char *aprint_pathname(const struct level *lev)
 {
 	char *s;
 	FILE *f = open_memstream(&s, &(size_t){0});
@@ -142,6 +143,13 @@ static char *aprint_pathname(struct level *lev)
 		return 0;
 	}
 	return s;
+}
+
+static void error_msg(const struct level *lev, const char *op)
+{
+	const char *errstr = strerror(errno);
+	fprint_pathname(stderr, lev);
+	fprintf(stderr, ": %s: %s\n", op, errstr);
 }
 
 static int do_restore(const char *dest, const unsigned char *roothash, struct ctx *ctx)
@@ -192,13 +200,17 @@ static int do_restore(const char *dest, const unsigned char *roothash, struct ct
 			if (S_ISDIR(cur->mode)) {
 				int pfd = cur->parent ? cur->parent->fd : AT_FDCWD;
 				if (mkdirat(pfd, cur->name, 0700) && errno != EEXIST) {
-					perror("mkdir");
-					goto fail;
+					error_msg(cur, "mkdir");
+					ctx->errorcnt++;
+					if (ctx->stop_on_errors) goto fail;
+					goto ino_done;
 				}
 				cur->fd = openat(pfd, cur->name, O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);
 				if (cur->fd < 0) {
-					perror("open");
-					goto fail;
+					error_msg(cur, "open");
+					ctx->errorcnt++;
+					if (ctx->stop_on_errors) goto fail;
+					goto ino_done;
 				}
 			}
 			if (ctx->verbose) {
@@ -246,7 +258,14 @@ static int do_restore(const char *dest, const unsigned char *roothash, struct ct
 				}
 			}
 			cur->fd = openat(cur->parent->fd, cur->name, O_RDWR|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC, 0600);
+			if (cur->fd < 0) {
+				error_msg(cur, "open");
+				ctx->errorcnt++;
+				if (ctx->stop_on_errors) goto fail;
+				goto ino_done;
+			}
 			FILE *f = fdopen(dupe(cur->fd), "wb");
+			if (!f) goto fail;
 			if (got_blocks) {
 				for (; cur->pos+HASHLEN <= cur->dlen; cur->pos+=HASHLEN) {
 					size_t blen;
@@ -266,27 +285,29 @@ static int do_restore(const char *dest, const unsigned char *roothash, struct ct
 		if (S_ISLNK(cur->mode)) {
 			char *target = strndup((char *)cur->data+cur->pos, cur->dlen-cur->pos);
 			if (symlinkat(target, cur->parent->fd, cur->name)) {
-				perror("symlink");
-				goto fail;
+				error_msg(cur, "symlink");
+				ctx->errorcnt++;
+				if (ctx->stop_on_errors) goto fail;
+				goto ino_done;
 			}
 			if (fchownat(cur->parent->fd, cur->name, cur->uid, cur->gid, AT_SYMLINK_NOFOLLOW)) {
-				perror("lchown");
+				error_msg(cur, "lchown");
 			}
 			if (fchmodat(cur->parent->fd, cur->name, cur->mode, AT_SYMLINK_NOFOLLOW) && errno != EOPNOTSUPP) {
-				perror("lchmod");
+				error_msg(cur, "lchmod");
 			}
 			if (utimensat(cur->parent->fd, cur->name, (struct timespec []){ { .tv_nsec = UTIME_OMIT }, cur->mtim }, AT_SYMLINK_NOFOLLOW)) {
-				perror("lutimens");
+				error_msg(cur, "lutimens");
 			}
 		} else {
 			if (fchown(cur->fd, cur->uid, cur->gid)) {
-				perror("fchown");
+				error_msg(cur, "fchown");
 			}
 			if (fchmod(cur->fd, cur->mode)) {
-				perror("fchmod");
+				error_msg(cur, "fchmod");
 			}
 			if (futimens(cur->fd, (struct timespec []){ { .tv_nsec = UTIME_OMIT }, cur->mtim })) {
-				perror("futimens");
+				error_msg(cur, "futimens");
 			}
 		}
 ino_done:
@@ -322,9 +343,9 @@ int restore_main(int argc, char **argv, char *progname)
 	const char *roothash_string = 0;
 	const char *destdir = 0;
 	const char *keyfile = 0;
-	int verbose = 0, progress = 0;
+	int verbose = 0, progress = 0, stop_on_errors = 0;
 
-	while ((c=getopt(argc, argv, "r:d:k:vP")) >= 0) switch (c) {
+	while ((c=getopt(argc, argv, "r:d:k:vPS")) >= 0) switch (c) {
 	case 'r':
 		roothash_string = optarg;
 		break;
@@ -339,6 +360,9 @@ int restore_main(int argc, char **argv, char *progname)
 		break;
 	case 'P':
 		progress = 1;
+		break;
+	case 'S':
+		stop_on_errors = 1;
 		break;
 	case '?':
 		usage(progname);
@@ -367,6 +391,7 @@ int restore_main(int argc, char **argv, char *progname)
 	struct ctx ctx = {
 		.progress = progress,
 		.verbose = verbose,
+		.stop_on_errors = stop_on_errors,
 		.dc.rcpt_secret = rcpt_secret,
 		.dc.ephemeral_map = map_create(),
 	};
