@@ -120,6 +120,15 @@ struct level {
 	struct level *parent, *child;
 };
 
+static int fprint_pathname(FILE *f, struct level *lev)
+{
+	for (; lev->parent; lev=lev->parent);
+	for (; lev; lev=lev->child)
+		if (fprintf(f, "%s%s", lev->name, lev->child ? "/" : "") < 0)
+			return -1;
+	return 0;
+}
+
 static int do_restore(const char *dest, const unsigned char *roothash, struct ctx *ctx)
 {
 	struct level *cur = calloc(1, sizeof *cur);
@@ -211,14 +220,17 @@ static int do_restore(const char *dest, const unsigned char *roothash, struct ct
 					}
 					goto ino_done;
 				}
-				struct level *lev;
 				size_t pathlen = 0;
 				FILE *f = open_memstream(&linkto, &pathlen);
-				for (lev=cur; lev->parent; lev=lev->parent);
-				for (; lev; lev=lev->child)
-					fprintf(f, "%s%s", lev->name, lev->child ? "/" : "");
-				if (ferror(f) || fclose(f)) goto fail; //fixme
-				map_set(hardlink_map, hashstr, linkto);
+				if (!f) goto hardlink_fail;
+				int err = fprint_pathname(f, cur)<0 || ferror(f);
+				if (fclose(f) || err || map_set(hardlink_map, hashstr, linkto) < 0) {
+hardlink_fail:
+					free(linkto);
+					fprintf(stderr, "hardlinks to ");
+					fprint_pathname(stderr, cur);
+					fprintf(stderr, " could not be preserved\n");
+				}
 			}
 			cur->fd = openat(cur->parent->fd, cur->name, O_RDWR|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC, 0600);
 			FILE *f = fdopen(dupe(cur->fd), "wb");
