@@ -129,6 +129,19 @@ static int fprint_pathname(FILE *f, struct level *lev)
 	return 0;
 }
 
+static char *aprint_pathname(struct level *lev)
+{
+	char *s;
+	FILE *f = open_memstream(&s, &(size_t){0});
+	if (!f) return 0;
+	int err = fprint_pathname(f, lev)<0 || ferror(f);
+	if (fclose(f) || err) {
+		free(s);
+		return 0;
+	}
+	return s;
+}
+
 static int do_restore(const char *dest, const unsigned char *roothash, struct ctx *ctx)
 {
 	struct level *cur = calloc(1, sizeof *cur);
@@ -220,12 +233,7 @@ static int do_restore(const char *dest, const unsigned char *roothash, struct ct
 					}
 					goto ino_done;
 				}
-				size_t pathlen = 0;
-				FILE *f = open_memstream(&linkto, &pathlen);
-				if (!f) goto hardlink_fail;
-				int err = fprint_pathname(f, cur)<0 || ferror(f);
-				if (fclose(f) || err || map_set(hardlink_map, hashstr, linkto) < 0) {
-hardlink_fail:
+				if (!(linkto = aprint_pathname(cur)) || map_set(hardlink_map, hashstr, linkto) < 0) {
 					free(linkto);
 					fprintf(stderr, "hardlinks to ");
 					fprint_pathname(stderr, cur);
