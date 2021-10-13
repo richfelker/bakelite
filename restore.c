@@ -201,7 +201,10 @@ static int do_restore(const char *dest, const unsigned char *roothash, struct ct
 					goto fail;
 				}
 			}
-			if (ctx->progress) {
+			if (ctx->verbose) {
+				fprint_pathname(stdout, cur);
+				putchar('\n');
+			} else if (ctx->progress) {
 				printf("%s%s", cur->name, S_ISDIR(cur->mode) ? "/" : "");
 				fflush(stdout);
 			}
@@ -288,7 +291,7 @@ static int do_restore(const char *dest, const unsigned char *roothash, struct ct
 		}
 ino_done:
 		if (cur->fd >= 0) close(cur->fd);
-		if (ctx->progress) {
+		if (!ctx->verbose && ctx->progress) {
 			for (size_t i=strlen(cur->name)+!!S_ISDIR(cur->mode); i>0; i--)
 				fwrite("\b \b", 1, 3, stdout);
 			fflush(stdout);
