@@ -105,6 +105,8 @@ struct ctx {
 	//struct crypto_context cc;
 	struct decrypt_context dc;
 	long long errorcnt;
+	int verbose;
+	int progress;
 };
 
 struct level {
@@ -188,7 +190,10 @@ static int do_restore(const char *dest, const unsigned char *roothash, struct ct
 				cur->pos += strlen(s) + 1;
 			}
 			if (S_ISDIR(cur->mode)) {
-				printf("entering %s\n", cur->name);
+				if (ctx->progress) {
+					printf("%s/", cur->name);
+					fflush(stdout);
+				}
 				int pfd = cur->parent ? cur->parent->fd : AT_FDCWD;
 				if (mkdirat(pfd, cur->name, 0700) && errno != EEXIST) {
 					perror("mkdir");
@@ -220,7 +225,11 @@ static int do_restore(const char *dest, const unsigned char *roothash, struct ct
 			continue;
 		}
 		if (S_ISDIR(cur->mode)) {
-			printf("leaving %s\n", cur->name);
+			if (ctx->progress) {
+				for (size_t i=strlen(cur->name)+1; i>0; i--)
+					fwrite("\b \b", 1, 3, stdout);
+				fflush(stdout);
+			}
 		}
 		if (S_ISREG(cur->mode)) {
 			if (nlink > 1) {
@@ -312,8 +321,9 @@ int restore_main(int argc, char **argv, char *progname)
 	const char *roothash_string = 0;
 	const char *destdir = 0;
 	const char *keyfile = 0;
+	int verbose = 0, progress = 0;
 
-	while ((c=getopt(argc, argv, "r:d:k:")) >= 0) switch (c) {
+	while ((c=getopt(argc, argv, "r:d:k:vP")) >= 0) switch (c) {
 	case 'r':
 		roothash_string = optarg;
 		break;
@@ -322,6 +332,12 @@ int restore_main(int argc, char **argv, char *progname)
 		break;
 	case 'd':
 		destdir = optarg;
+		break;
+	case 'v':
+		verbose++;
+		break;
+	case 'P':
+		progress = 1;
 		break;
 	case '?':
 		usage(progname);
@@ -348,6 +364,8 @@ int restore_main(int argc, char **argv, char *progname)
 	fclose(kf);
 
 	struct ctx ctx = {
+		.progress = progress,
+		.verbose = verbose,
 		.dc.rcpt_secret = rcpt_secret,
 		.dc.ephemeral_map = map_create(),
 	};
