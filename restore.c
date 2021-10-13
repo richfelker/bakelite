@@ -190,10 +190,6 @@ static int do_restore(const char *dest, const unsigned char *roothash, struct ct
 				cur->pos += strlen(s) + 1;
 			}
 			if (S_ISDIR(cur->mode)) {
-				if (ctx->progress) {
-					printf("%s/", cur->name);
-					fflush(stdout);
-				}
 				int pfd = cur->parent ? cur->parent->fd : AT_FDCWD;
 				if (mkdirat(pfd, cur->name, 0700) && errno != EEXIST) {
 					perror("mkdir");
@@ -204,6 +200,10 @@ static int do_restore(const char *dest, const unsigned char *roothash, struct ct
 					perror("open");
 					goto fail;
 				}
+			}
+			if (ctx->progress) {
+				printf("%s%s", cur->name, S_ISDIR(cur->mode) ? "/" : "");
+				fflush(stdout);
 			}
 		}
 		if (S_ISDIR(cur->mode) && cur->pos < cur->dlen) {
@@ -223,13 +223,6 @@ static int do_restore(const char *dest, const unsigned char *roothash, struct ct
 			cur->pos += namelen + 1;
 			cur = new;
 			continue;
-		}
-		if (S_ISDIR(cur->mode)) {
-			if (ctx->progress) {
-				for (size_t i=strlen(cur->name)+1; i>0; i--)
-					fwrite("\b \b", 1, 3, stdout);
-				fflush(stdout);
-			}
 		}
 		if (S_ISREG(cur->mode)) {
 			if (nlink > 1) {
@@ -295,6 +288,11 @@ static int do_restore(const char *dest, const unsigned char *roothash, struct ct
 		}
 ino_done:
 		if (cur->fd >= 0) close(cur->fd);
+		if (ctx->progress) {
+			for (size_t i=strlen(cur->name)+!!S_ISDIR(cur->mode); i>0; i--)
+				fwrite("\b \b", 1, 3, stdout);
+			fflush(stdout);
+		}
 		struct level *parent = cur->parent;
 		free((void *)cur->data);
 		free(cur);
