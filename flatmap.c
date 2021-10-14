@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <fcntl.h>
 #include "flatmap.h"
 
 #include <stdio.h>
@@ -41,6 +42,15 @@ ssize_t flatmap_read(const struct flatmap *m, void *buf, size_t len, off_t off)
 
 ssize_t flatmap_write(struct flatmap *m, const void *buf, size_t len, off_t off)
 {
+	if (m->mode != O_RDWR) {
+		errno = EBADF;
+		return -1;
+	}
+	off_t max = m->mmlen > m->maxoff ? m->maxoff : m->mmlen;
+	if (off < max && len < max - off) {
+		memcpy(m->mm + off, buf, len);
+		return len;
+	}
 	ssize_t r = pwrite_wrap(m->fd, buf, len, off);
 	if (r >= 0 && off+r > m->maxoff) m->maxoff = off+r;
 	return r;
@@ -218,7 +228,8 @@ int flatmap_create(struct flatmap *m, int fd, const void *comment, size_t commen
 	uint64_t table[17];
 	memset(table, -1, sizeof table);
 	pwrite_wrap(fd, table, sizeof table, sizeof header + comment_len);
-	m->mm = mmap(0, mmsize, PROT_READ, MAP_SHARED, fd, 0);
+	m->mode = O_RDWR;
+	m->mm = mmap(0, mmsize, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
 	m->mmlen = (m->mm == MAP_FAILED) ? 0 : mmsize;
 	m->fd = fd;
 	m->off0 = sizeof header + comment_len;
@@ -236,7 +247,8 @@ int flatmap_open(struct flatmap *m, int fd, size_t mmsize)
 		errno = EINVAL;
 		return -1;
 	}
-	m->mm = mmap(0, mmsize, PROT_READ, MAP_SHARED, fd, 0);
+	m->mode = fcntl(fd, F_GETFL) & O_ACCMODE;
+	m->mm = mmap(0, mmsize, PROT_READ | (m->mode==O_RDWR ? PROT_WRITE : 0), MAP_SHARED, fd, 0);
 	m->mmlen = (m->mm == MAP_FAILED) ? 0 : mmsize;
 	m->fd = fd;
 	m->off0 = le64toh(header.start);

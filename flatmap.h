@@ -8,6 +8,7 @@ struct flatmap {
 	off_t off0, maxoff;
 	unsigned char *mm;
 	size_t mmlen;
+	int mode;
 };
 
 ssize_t flatmap_read(const struct flatmap *m, void *buf, size_t len, off_t off);
