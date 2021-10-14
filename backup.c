@@ -197,6 +197,14 @@ int walk(unsigned char *roothash, int base_fd, struct ctx *ctx)
 			}
 
 			if (S_ISDIR(st.st_mode)) {
+				if (localindex_getino(new_index, st.st_dev, st.st_ino, 0) > 0) {
+					fprintf(stderr, "skipping already-visited directory (%s %jx:%ju)\n",
+						cur->de->d_name,
+						(uintmax_t)st.st_dev,
+						(uintmax_t)st.st_ino);
+					close(fd);
+					continue;
+				}
 				struct level *new = malloc(sizeof *new);
 				if (!new) goto fail;
 				new->changed = 0;
