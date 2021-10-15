@@ -391,13 +391,11 @@ int backup_main(int argc, char **argv, char *progname)
 		return 1;
 	}
 
-	const char *indexdir = ".";
 	struct map *dev_map;
 
-	d = open(indexdir, O_RDONLY|O_DIRECTORY|O_CLOEXEC);
+	d = open(".", O_RDONLY|O_DIRECTORY|O_CLOEXEC);
 	if (d < 0) {
-		fprintf(stderr, "cannot open index directory %s: ", indexdir);
-		perror(0);
+		perror("cannot open working directory");
 		return 1;
 	}
 
