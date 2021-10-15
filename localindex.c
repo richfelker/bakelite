@@ -113,14 +113,14 @@ int localindex_null(struct localindex *idx)
 	return 0;
 }
 
-int localindex_create(struct localindex *idx, FILE *f, const struct timespec *ts, const struct map *devmap)
+int localindex_create(struct localindex *idx, int fd, const struct timespec *ts, const struct map *devmap)
 {
 	idx->ts = *ts;
 	idx->devmap = devmap;
 	idx->obj_count = 0;
 	char label[] = "bakelite index\n";
 
-	if (flatmap_create(&idx->m, fileno(f), label, sizeof label, 128<<20) < 0)
+	if (flatmap_create(&idx->m, fd, label, sizeof label, 128<<20) < 0)
 		return -1;
 
 	idx->ino_table = flatmap_newtable(&idx->m, 0, "inodes", 6);
@@ -140,12 +140,12 @@ int localindex_create(struct localindex *idx, FILE *f, const struct timespec *ts
 	return 0;
 }
 
-int localindex_open(struct localindex *idx, FILE *f, const struct map *devmap)
+int localindex_open(struct localindex *idx, int fd, const struct map *devmap)
 {
 	idx->devmap = devmap;
 	idx->obj_count = -1; // unknown
 
-	if (flatmap_open(&idx->m, fileno(f), 128<<20) < 0)
+	if (flatmap_open(&idx->m, fd, 128<<20) < 0)
 		return -1;
 
 	idx->ino_table = flatmap_get(&idx->m, 0, "inodes", 6, 0, 0);
@@ -172,6 +172,11 @@ int localindex_open(struct localindex *idx, FILE *f, const struct map *devmap)
 	idx->ts.tv_nsec = ns;
 
 	return 0;
+}
+
+void localindex_close(struct localindex *idx)
+{
+	flatmap_close(&idx->m);
 }
 
 #ifdef TEST

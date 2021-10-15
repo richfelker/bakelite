@@ -18,6 +18,7 @@ off_t flatmap_set(struct flatmap *m, off_t root, const void *k, size_t kl, const
 off_t flatmap_newtable(struct flatmap *m, off_t root, const void *k, size_t kl);
 int flatmap_create(struct flatmap *m, int fd, const void *comment, size_t comment_len, size_t mmsize);
 int flatmap_open(struct flatmap *m, int fd, size_t mmsize);
+void flatmap_close(struct flatmap *m);
 
 int flatmap_iter(const struct flatmap *m, off_t root,
 	int (*f)(const struct flatmap *, off_t, size_t, const void *, void *), void *ctx);

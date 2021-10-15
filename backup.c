@@ -460,11 +460,10 @@ int backup_main(int argc, char **argv, char *progname)
 
 	struct localindex prev_index = { 0 }, new_index = { 0 };
 
-	f = ffopenat(d, "index", O_RDONLY|O_CLOEXEC, 0);
-	if (f) {
-		if (localindex_open(&prev_index, f, dev_map) < 0)
+	int prev_index_fd = openat(d, "index", O_RDONLY|O_CLOEXEC);
+	if (prev_index_fd>=0) {
+		if (localindex_open(&prev_index, prev_index_fd, dev_map) < 0)
 			return 1;
-		//fclose(f); // FIXME: close at right point
 	} else if (errno == ENOENT) {
 		if (localindex_null(&prev_index) < 0)
 			return 1;
@@ -478,9 +477,9 @@ int backup_main(int argc, char **argv, char *progname)
 		exit(1);
 	}
 
-	f = ffopenat(d, "index.pending", O_RDWR|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC, 0600);
-	if (f) {
-		if (localindex_create(&new_index, f, &ts0, dev_map) < 0)
+	int new_index_fd = openat(d, "index.pending", O_RDWR|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC, 0600);
+	if (new_index_fd>=0) {
+		if (localindex_create(&new_index, new_index_fd, &ts0, dev_map) < 0)
 			return 1;
 	} else {
 		if (errno == EEXIST) {
@@ -537,7 +536,8 @@ int backup_main(int argc, char **argv, char *progname)
 	unsigned char root_hash[HASHLEN];
 	if (walk(root_hash, base_fd, &ctx) < 0)
 		exit(1);
-	//fclose(f); // FIXME: close at right point
+	localindex_close(&prev_index);
+	close(prev_index_fd);
 
 	char *sumdata;
 	size_t sumsize;
@@ -550,6 +550,8 @@ int backup_main(int argc, char **argv, char *progname)
 		emit_bloom(f, out, &new_index);
 	}
 	fclose(f);
+	localindex_close(&new_index);
+	close(new_index_fd);
 
 	struct tm tm;
 	gmtime_r(&ts0.tv_sec, &tm);

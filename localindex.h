@@ -22,8 +22,9 @@ int localindex_setino(struct localindex *idx, dev_t dev, ino_t ino, const unsign
 int localindex_setdep(struct localindex *idx, dev_t dev, ino_t ino, off_t block, const unsigned char *val);
 int localindex_setblock(struct localindex *idx, const unsigned char *key, const unsigned char *val);
 void localindex_to_bloom(const struct localindex *idx, struct bloom *b);
-int localindex_create(struct localindex *idx, FILE *f, const struct timespec *ts, const struct map *devmap);
-int localindex_open(struct localindex *idx, FILE *f, const struct map *devmap);
+int localindex_create(struct localindex *idx, int fd, const struct timespec *ts, const struct map *devmap);
+int localindex_open(struct localindex *idx, int fd, const struct map *devmap);
 int localindex_null(struct localindex *idx);
+void localindex_close(struct localindex *idx);
 
 #endif

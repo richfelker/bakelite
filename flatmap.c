@@ -256,3 +256,8 @@ int flatmap_open(struct flatmap *m, int fd, size_t mmsize)
 	m->maxoff = fstat(fd, &st) ? 0 : st.st_size;
 	return 0;
 }
+
+void flatmap_close(struct flatmap *m)
+{
+	munmap(m->mm, m->mmlen);
+}
