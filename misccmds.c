@@ -5,6 +5,7 @@
 #include <string.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <dirent.h>
 #include "x25519.h"
 
 static void genkey_usage(char *progname)
@@ -110,21 +111,17 @@ int pubkey_main(int argc, char **argv, char *progname)
 
 static void init_usage(char *progname)
 {
-	printf("usage: %s init [-k <pubkeyfile>] <indexdir> <rootdir>\n", progname);
+	printf("usage: %s init <pubkeyfile> <rootdir>\n", progname);
 }
 
 int init_main(int argc, char **argv, char *progname)
 {
-	const char *keyfile = 0;
-	int c, fd, d;
+	int c, fd;
 	FILE *f;
 	unsigned char key[32];
 	void (*usage)(char *) = init_usage;
 
-	while ((c=getopt(argc, argv, "k:")) >= 0) switch (c) {
-	case 'k':
-		keyfile = optarg;
-		break;
+	while ((c=getopt(argc, argv, "")) >= 0) switch (c) {
 	case '?':
 		usage(progname);
 		return 1;
@@ -135,13 +132,9 @@ int init_main(int argc, char **argv, char *progname)
 		return 1;
 	}
 
-	const char *indexdir = argv[optind];
+	const char *keyfile = argv[optind];
 	const char *rootdir = argv[optind+1];
 
-	if (!keyfile) {
-		fprintf(stderr, "recipient key file (-k) is mandatory\n");
-		return 1;
-	}
 	fd = open(keyfile, O_RDONLY|O_CLOEXEC);
 	if (fd < 0) {
 		fprintf(stderr, "cannot open key file %s: ", keyfile);
@@ -160,26 +153,34 @@ int init_main(int argc, char **argv, char *progname)
 	}
 	fclose(f);
 
-	if (mkdir(indexdir, 0700)) {
-		fprintf(stderr, "cannot create directory %s: ", indexdir);
-		perror(0);
+	DIR *d = opendir(".");
+	if (!d) {
+		perror("opendir");
 		return 1;
 	}
-	d = open(indexdir, O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);
-	if (d < 0) {
-		fprintf(stderr, "cannot open directory %s: ", indexdir);
-		perror(0);
-		return 1;
+	for (;;) {
+		errno = 0;
+		struct dirent *de = readdir(d);
+		if (!de) {
+			if (!errno) break;
+			perror("error reading working directory");
+			return 1;
+		}
+		if (strcmp(de->d_name, ".") && strcmp(de->d_name, "..")) {
+			fprintf(stderr, "working directory is not empty\n");
+			return 1;
+		}
 	}
-	if (symlinkat(rootdir, d, "root")) {
+	closedir(d);
+	if (symlink(rootdir, "root")) {
 		perror("cannot make root symlink");
 		return 1;
 	}
-	if (mkdirat(d, "devices", 0700)) {
+	if (mkdir("devices", 0700)) {
 		perror("cannot make devices directory");
 		return 1;
 	}
-	fd = openat(d, "pubkey", O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC, 0600);
+	fd = open("pubkey", O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC, 0600);
 	if (fd < 0) {
 		perror("error creating key file");
 		return 1;
@@ -196,7 +197,6 @@ int init_main(int argc, char **argv, char *progname)
 		return 1;
 	}
 	fclose(f);
-	close(d);
 	return 0;
 }
 
