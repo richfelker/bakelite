@@ -30,9 +30,9 @@ static int dupe(int fd)
 	return fcntl(fd, F_DUPFD_CLOEXEC, 0);
 }
 
-void *load_and_decrypt_file(size_t *size, unsigned char *computed_hash, const char *name, struct decrypt_context *dc)
+void *load_and_decrypt_file(size_t *size, unsigned char *computed_hash, int dfd, const char *name, struct decrypt_context *dc)
 {
-	int fd = open(name, O_RDONLY|O_CLOEXEC);
+	int fd = openat(dfd, name, O_RDONLY|O_CLOEXEC);
 	struct stat st;
 	fstat(fd, &st);
 	if (st.st_size > PTRDIFF_MAX) {
@@ -78,12 +78,12 @@ void *load_and_decrypt_file(size_t *size, unsigned char *computed_hash, const ch
 	return buf;
 }
 
-void *load_and_decrypt_hash(size_t *size, const unsigned char *hash, struct decrypt_context *dc)
+void *load_and_decrypt_hash(size_t *size, const unsigned char *hash, int objdir, struct decrypt_context *dc)
 {
 	char name[2*HASHLEN+1];
 	for (int i=0; i<HASHLEN; i++) snprintf(name+2*i, sizeof name - 2*i, "%.2x", hash[i]);
 	unsigned char computed_hash[HASHLEN];
-	void *buf = load_and_decrypt_file(size, computed_hash, name, dc);
+	void *buf = load_and_decrypt_file(size, computed_hash, objdir, name, dc);
 	if (buf) {
 		if (memcmp(hash, computed_hash, HASHLEN)) {
 			fprintf(stderr, "%s hash mismatch\n", name);
@@ -108,6 +108,7 @@ struct ctx {
 	int verbose;
 	int progress;
 	int stop_on_errors;
+	int objdir;
 };
 
 struct level {
@@ -157,7 +158,7 @@ static int do_restore(const char *dest, const unsigned char *roothash, struct ct
 	struct level *cur = calloc(1, sizeof *cur);
 	struct map *hardlink_map = map_create();
 	cur->name = dest;
-	cur->data = load_and_decrypt_hash(&cur->dlen, roothash, &ctx->dc);
+	cur->data = load_and_decrypt_hash(&cur->dlen, roothash, ctx->objdir, &ctx->dc);
 	if (!cur->data) goto fail;
 	for (;;) {
 		int got_blocks = 0;
@@ -230,7 +231,7 @@ static int do_restore(const char *dest, const unsigned char *roothash, struct ct
 			new->fd = -1;
 			if (cur->pos+HASHLEN >= cur->dlen) goto fail;
 			new->hash = cur->data+cur->pos;
-			new->data = load_and_decrypt_hash(&new->dlen, new->hash, &ctx->dc);
+			new->data = load_and_decrypt_hash(&new->dlen, new->hash, ctx->objdir, &ctx->dc);
 			cur->pos += HASHLEN;
 			size_t namelen = strnlen((char *)cur->data+cur->pos, cur->dlen-cur->pos);
 			if (cur->data[cur->pos+namelen]) goto fail;
@@ -269,7 +270,7 @@ static int do_restore(const char *dest, const unsigned char *roothash, struct ct
 			if (got_blocks) {
 				for (; cur->pos+HASHLEN <= cur->dlen; cur->pos+=HASHLEN) {
 					size_t blen;
-					unsigned char *block = load_and_decrypt_hash(&blen, cur->data+cur->pos, &ctx->dc);
+					unsigned char *block = load_and_decrypt_hash(&blen, cur->data+cur->pos, ctx->objdir, &ctx->dc);
 					if (blen < 4) goto fail;
 					fwrite(block+4, 1, blen-4, f);
 					free(block);
@@ -333,7 +334,7 @@ fail:
 
 static void restore_usage(char *progname)
 {
-	printf("usage: %s restore -r <roothash> -k <secret_key_file> -d <destdir>\n", progname);
+	printf("usage: %s restore -k <secret_key_file> -d <destdir> <summary_file>\n", progname);
 }
 
 int restore_main(int argc, char **argv, char *progname)
@@ -347,6 +348,7 @@ int restore_main(int argc, char **argv, char *progname)
 
 	while ((c=getopt(argc, argv, "r:d:k:vPS")) >= 0) switch (c) {
 	case 'r':
+		// FIXME: not used for now
 		roothash_string = optarg;
 		break;
 	case 'k':
@@ -369,13 +371,39 @@ int restore_main(int argc, char **argv, char *progname)
 		return 1;
 	}
 
-	if (argc-optind != 0) {
+	if (argc-optind != 1 || !keyfile || !destdir) {
 		usage(progname);
 		return 1;
 	}
 
-	if (!keyfile || !destdir || !roothash_string) {
-		usage(progname);
+	char *summary_file = argv[optind];
+	char *final_slash = strrchr(summary_file, '/');
+	int d;
+	if (final_slash) {
+		*final_slash = 0;
+		d = open(summary_file, O_RDONLY|O_DIRECTORY|O_CLOEXEC);
+		if (!d) {
+			perror("opening directory");
+			return 1;
+		}
+		*final_slash = '/';
+	} else {
+		d = AT_FDCWD;
+	}
+
+	FILE *f = fopen(summary_file, "rbe");
+	if (!f) {
+		perror("opening summary file");
+		return 1;
+	}
+	char buf[256];
+	while (fgets(buf, sizeof buf, f)) {
+		if (!strncmp(buf, "root ", 5)) roothash_string = strndup(buf+5, 2*HASHLEN);
+	}
+	fclose(f);
+
+	if (!roothash_string) {
+		fprintf(stderr, "no root hash found\n");
 		return 1;
 	}
 
@@ -392,6 +420,7 @@ int restore_main(int argc, char **argv, char *progname)
 		.progress = progress,
 		.verbose = verbose,
 		.stop_on_errors = stop_on_errors,
+		.objdir = d,
 		.dc.rcpt_secret = rcpt_secret,
 		.dc.ephemeral_map = map_create(),
 	};
