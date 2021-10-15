@@ -349,7 +349,7 @@ static int emit_bloom(FILE *f, FILE *out, const struct localindex *new_index)
 
 static void backup_usage(char *progname)
 {
-	printf("usage: %s backup [options] <indexdir>\n", progname);
+	printf("usage: %s backup [options]\n", progname);
 }
 
 int backup_main(int argc, char **argv, char *progname)
@@ -386,12 +386,12 @@ int backup_main(int argc, char **argv, char *progname)
 		return 1;
 	}
 
-	if (argc-optind != 1) {
+	if (argc-optind != 0) {
 		usage(progname);
 		return 1;
 	}
 
-	const char *indexdir = argv[optind];
+	const char *indexdir = ".";
 	struct map *dev_map;
 
 	d = open(indexdir, O_RDONLY|O_DIRECTORY|O_CLOEXEC);
