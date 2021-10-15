@@ -354,7 +354,7 @@ static void backup_usage(char *progname)
 
 int backup_main(int argc, char **argv, char *progname)
 {
-	int c, d, orig_wd;
+	int c, d;
 	void (*usage)(char *) = backup_usage;
 	size_t bsize = 256*1024 - 128;
 	int xdev = 0;
@@ -398,17 +398,6 @@ int backup_main(int argc, char **argv, char *progname)
 	if (d < 0) {
 		fprintf(stderr, "cannot open index directory %s: ", indexdir);
 		perror(0);
-		return 1;
-	}
-
-	orig_wd = open(".", O_RDONLY|O_DIRECTORY|O_CLOEXEC);
-	if (orig_wd < 0) {
-		perror("cannot open original working directory");
-		return 1;
-	}
-
-	if (fchdir(d)) {
-		perror("fchdir");
 		return 1;
 	}
 
@@ -535,7 +524,7 @@ int backup_main(int argc, char **argv, char *progname)
 		if (output_to[0] == '-' && !output_to[1]) {
 			out = stdout;
 		} else {
-			out = ffopenat(orig_wd, output_to, O_WRONLY|O_CREAT|O_EXCL, 0600);
+			out = ffopenat(d, output_to, O_WRONLY|O_CREAT|O_EXCL, 0600);
 			if (!out) {
 				perror("creating output file");
 			}
