@@ -14,7 +14,7 @@ int prune_main(int, char **, char *);
 
 static void usage(char *progname)
 {
-	printf("usage: %s <command> [args]\n", progname);
+	printf("usage: %s [-C <dir>] <command> [args]\n", progname);
 }
 
 int main(int argc, char **argv)
@@ -22,7 +22,10 @@ int main(int argc, char **argv)
 	int c;
 	char *progname = argv[0];
 
-	while ((c=getopt(argc, argv, "")) >= 0) switch (c) {
+	while ((c=getopt(argc, argv, "C:")) >= 0) switch (c) {
+	case 'C':
+		chdir(optarg);
+		break;
 	case '?':
 		usage(progname);
 		return 1;
