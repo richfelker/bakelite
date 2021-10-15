@@ -12,20 +12,6 @@
 
 #include "localindex.h"
 
-static char *bin2hex(char *hex, const unsigned char *bin, size_t n)
-{
-	for (int i=0; i<n; i++)
-		sprintf(hex+2*i, "%.2x", bin[i]);
-	return hex;
-}
-
-static unsigned char *hex2bin(unsigned char *bin, const char *hex, size_t n)
-{
-	for (int i=0; i<n; i++)
-		sscanf(hex+2*i, "%2hhx", &bin[i]);
-	return bin;
-}
-
 static size_t make_ino_label(char *label, size_t n, const struct localindex *idx, dev_t dev, ino_t ino, off_t block)
 {
 	char devbuf[2*sizeof(intmax_t)+1], *devname, sep = '/';

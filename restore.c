@@ -12,18 +12,12 @@
 #include "crypto.h"
 #include "sha3.h"
 #include "map.h"
+#include "binhex.h"
 
 struct decrypt_context {
 	const unsigned char *rcpt_secret;
 	struct map *ephemeral_map;
 };
-
-static char *bin2hex(char *hex, const unsigned char *bin, size_t n)
-{
-	for (int i=0; i<n; i++)
-		sprintf(hex+2*i, "%.2x", bin[i]);
-	return hex;
-}
 
 static int dupe(int fd)
 {
