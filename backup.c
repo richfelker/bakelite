@@ -359,7 +359,7 @@ int backup_main(int argc, char **argv, char *progname)
 {
 	int c, d;
 	void (*usage)(char *) = backup_usage;
-	size_t bsize = 256*1024 - 128;
+	size_t bsize = 256*1024;
 	int xdev = 0;
 	const char *sign_with = 0, *output_to = 0;
 	FILE *f, *out;
@@ -481,6 +481,32 @@ int backup_main(int argc, char **argv, char *progname)
 		exit(1);
 	}
 
+	f = ffopenat(d, "config", O_RDONLY|O_CLOEXEC, 0);
+	if (f) {
+		char buf[256];
+		while (fgets(buf, sizeof buf, f)) {
+			size_t l = strlen(buf);
+			if (l && buf[l-1]=='\n') buf[--l] = 0;
+			if (!strncmp(buf, "label ", 6)) {
+				snprintf(bak_label, sizeof bak_label, "%s", buf+6);
+			} else if (!strncmp(buf, "blocksize ", 10)) {
+				bsize = strtoul(buf+10, 0, 0);
+			}
+		}
+	} else if (errno != ENOENT) {
+		perror("opening config file");
+		return 1;
+	}
+
+	if (bsize < 4000) {
+		fprintf(stderr, "block size %zu too small\n", bsize);
+		return 1;
+	} else if (bsize > 64<<20) {
+		fprintf(stderr, "block size %zu too large\n", bsize);
+		return 1;
+	}
+	bsize -= 48; // covers cryptographic and data internal headers
+
 	int new_index_fd = openat(d, "index.pending", O_RDWR|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC, 0600);
 	if (new_index_fd>=0) {
 		if (localindex_create(&new_index, new_index_fd, &ts0, dev_map) < 0)
@@ -547,6 +573,7 @@ int backup_main(int argc, char **argv, char *progname)
 	size_t sumsize;
 	f = open_memstream(&sumdata, &sumsize);
 	fprintf(f, "timestamp %lld.%.9ld\n", (long long)ts0.tv_sec, ts0.tv_nsec);
+	fprintf(f, "label %s\n", bak_label);
 	fprintf(f, "root ");
 	for (int i=0; i<HASHLEN; i++) fprintf(f, "%.2x", root_hash[i]);
 	fprintf(f, "\n");
