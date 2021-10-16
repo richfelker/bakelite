@@ -10,6 +10,7 @@
 #include "sha3.h"
 #include "crypto.h"
 #include "chacha20.h"
+#include "binhex.h"
 
 int emit_file_record(FILE *f, const char *name, size_t len)
 {
@@ -56,10 +57,9 @@ int emit_new_blob(unsigned char *label, FILE *f, unsigned char *data, size_t len
 	nonce = htole64(nonce);
 	sha3_update(&h, &nonce, sizeof nonce);
 	sha3_update(&h, data, len);
-	char label_hex[2*HASHLEN+1];
 	sha3_final(label, &h);
-	for (int i=0; i<HASHLEN; i++)
-		snprintf(label_hex+2*i, 3, "%.2x", label[i]);
+	char label_hex[2*HASHLEN+1];
+	bin2hex(label_hex, label, HASHLEN);
 
 	size_t blob_size = len + sizeof cc->ephemeral_public + sizeof nonce;
 	emit_file_record(f, label_hex, blob_size);
