@@ -22,7 +22,7 @@ int main(int argc, char **argv)
 	int c;
 	char *progname = argv[0];
 
-	while ((c=getopt(argc, argv, "C:")) >= 0) switch (c) {
+	while ((c=getopt(argc, argv, "+C:")) >= 0) switch (c) {
 	case 'C':
 		chdir(optarg);
 		break;
