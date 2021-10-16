@@ -345,7 +345,9 @@ static int emit_bloom(FILE *f, FILE *out, const struct localindex *new_index)
 	char label[2*HASHLEN+1];
 	bin2hex(label, hash, HASHLEN);
 	fprintf(f, "bloom %s\n", label);
-	return emit_clear_file(out, label, b->bits, b->l+32);
+	char name[BLOBNAME_SIZE];
+	gen_blob_name(name, hash);
+	return emit_clear_file(out, name, b->bits, b->l+32);
 }
 
 static void backup_usage(char *progname)

@@ -11,6 +11,7 @@
 #include "crypto.h"
 #include "chacha20.h"
 #include "binhex.h"
+#include "store.h"
 
 int emit_file_record(FILE *f, const char *name, size_t len)
 {
@@ -46,6 +47,14 @@ static int emit_pad(size_t unpadded_size, FILE *f)
 	return 0;
 }
 
+void gen_blob_name(char *name, const unsigned char *hash)
+{
+	size_t j = sizeof BLOBNAME_PREFIX - 1;
+	memcpy(name, BLOBNAME_PREFIX, j);
+	bin2hex(name+j, hash, HASHLEN);
+	memcpy(name+j-4, name+j, 3);
+}
+
 int emit_new_blob(unsigned char *label, FILE *f, unsigned char *data, size_t len, struct crypto_context *cc)
 {
 	uint64_t nonce = get_nonce(cc);
@@ -58,11 +67,11 @@ int emit_new_blob(unsigned char *label, FILE *f, unsigned char *data, size_t len
 	sha3_update(&h, &nonce, sizeof nonce);
 	sha3_update(&h, data, len);
 	sha3_final(label, &h);
-	char label_hex[2*HASHLEN+1];
-	bin2hex(label_hex, label, HASHLEN);
+	char name[BLOBNAME_SIZE];
+	gen_blob_name(name, label);
 
 	size_t blob_size = len + sizeof cc->ephemeral_public + sizeof nonce;
-	emit_file_record(f, label_hex, blob_size);
+	emit_file_record(f, name, blob_size);
 	fwrite(cc->ephemeral_public, 1, sizeof cc->ephemeral_public, f);
 	fwrite(&(uint64_t){htole64(nonce)}, 1, sizeof nonce, f);
 	fwrite(data, 1, len, f);

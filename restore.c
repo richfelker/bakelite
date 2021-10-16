@@ -13,6 +13,7 @@
 #include "sha3.h"
 #include "map.h"
 #include "binhex.h"
+#include "store.h"
 
 struct decrypt_context {
 	const unsigned char *rcpt_secret;
@@ -74,8 +75,8 @@ void *load_and_decrypt_file(size_t *size, unsigned char *computed_hash, int dfd,
 
 void *load_and_decrypt_hash(size_t *size, const unsigned char *hash, int objdir, struct decrypt_context *dc)
 {
-	char name[2*HASHLEN+1];
-	bin2hex(name, hash, HASHLEN);
+	char name[BLOBNAME_SIZE];
+	gen_blob_name(name, hash);
 	unsigned char computed_hash[HASHLEN];
 	void *buf = load_and_decrypt_file(size, computed_hash, objdir, name, dc);
 	if (buf) {
