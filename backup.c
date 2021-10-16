@@ -86,15 +86,15 @@ static int emit_file_blocks(FILE *in, FILE *out, dev_t dev, ino_t ino, FILE *blo
 			goto fail;
 
 		unsigned char blob_id[HASHLEN];
-		int r = localindex_getblock(prev_index, hash, blob_id);
+ 		int r = localindex_getblock(new_index, hash, blob_id);
 		if (r < 0) goto fail;
 		if (!r) {
-			if (emit_new_blob(blob_id, out, buf, len+4, cc) < 0)
-				goto fail;
-		}
-		r = localindex_getblock(new_index, hash, blob_id);
-		if (r < 0) goto fail;
-		if (!r) {
+			r = localindex_getblock(prev_index, hash, blob_id);
+			if (r < 0) goto fail;
+			if (!r) {
+				if (emit_new_blob(blob_id, out, buf, len+4, cc) < 0)
+					goto fail;
+			}
 			if (localindex_setblock(new_index, hash, blob_id))
 				goto fail;
 		}
