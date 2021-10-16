@@ -15,6 +15,7 @@
 #include "store.h"
 #include "crypto.h"
 #include "bloom.h"
+#include "binhex.h"
 
 struct level {
 	struct level *parent;
@@ -342,7 +343,7 @@ static int emit_bloom(FILE *f, FILE *out, const struct localindex *new_index)
 	unsigned char hash[HASHLEN];
 	sha3(b->bits, b->l+32, hash, HASHLEN);
 	char label[2*HASHLEN+1];
-	for (int i=0; i<HASHLEN; i++) snprintf(label+2*i, 3, "%.2x", hash[i]);
+	bin2hex(label, hash, HASHLEN);
 	fprintf(f, "bloom %s\n", label);
 	return emit_clear_file(out, label, b->bits, b->l+32);
 }

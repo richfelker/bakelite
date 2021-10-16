@@ -7,28 +7,16 @@
 #include "crypto.h"
 #include "bloom.h"
 #include "sha3.h"
-
-int hex2hash(unsigned char *h, const char *s)
-{
-	for (int n, i=0; i<HASHLEN; i++) {
-		if (sscanf(s+2*i, "%2hhx%n", h+i, &n) != 1 || n != 2)
-			return -1;
-	}
-	return 0;
-}
-
+#include "binhex.h"
 
 int prune_bloom(struct bloom **filters, size_t nfilters)
 {
 	DIR *d = opendir(".");
 	struct dirent *de;
 	while ((de = readdir(d))) {
-		if (strspn(de->d_name, "0123456789abcdef") != 2*HASHLEN
-		    || de->d_name[2*HASHLEN]) {
-			continue;
-		}
 		unsigned char hash[HASHLEN];
-		hex2hash(hash, de->d_name);
+		if (!hex2bin(hash, de->d_name, HASHLEN))
+			continue;
 		for (int i=0; i<nfilters; i++) {
 			if (bloom_query(filters[i], hash, HASHLEN)) {
 				printf("keep %s\n", de->d_name);

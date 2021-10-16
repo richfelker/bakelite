@@ -75,7 +75,7 @@ void *load_and_decrypt_file(size_t *size, unsigned char *computed_hash, int dfd,
 void *load_and_decrypt_hash(size_t *size, const unsigned char *hash, int objdir, struct decrypt_context *dc)
 {
 	char name[2*HASHLEN+1];
-	for (int i=0; i<HASHLEN; i++) snprintf(name+2*i, sizeof name - 2*i, "%.2x", hash[i]);
+	bin2hex(name, hash, HASHLEN);
 	unsigned char computed_hash[HASHLEN];
 	void *buf = load_and_decrypt_file(size, computed_hash, objdir, name, dc);
 	if (buf) {
@@ -423,11 +423,10 @@ int restore_main(int argc, char **argv, char *progname)
 		fprintf(stderr, "invalid hash %s\n", roothash_string);
 		return 1;
 	}
-	for (int i=0; i<HASHLEN; i++)
-		if (sscanf(roothash_string+2*i, "%2hhx", roothash+i) != 1) {
-			fprintf(stderr, "invalid hash %s\n", roothash_string);
-			return 1;
-		}
+	if (!hex2bin(roothash, roothash_string, HASHLEN)) {
+		fprintf(stderr, "invalid hash %s\n", roothash_string);
+		return 1;
+	}
 
 	if (do_restore(destdir, roothash, &ctx)) {
 		fprintf(stderr, "restore incomplete\n");
