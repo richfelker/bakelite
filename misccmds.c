@@ -231,6 +231,23 @@ int init_main(int argc, char **argv, char *progname)
 	}
 	fclose(f);
 
+	fd = open("store_cmd", O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC, 0700);
+	if (fd < 0) {
+		perror("error creating store_cmd file");
+		return 1;
+	}
+	f = fdopen(fd, "wb");
+	if (!f) {
+		close(fd);
+		perror("fdopen");
+		return 1;
+	}
+	if (fprintf(f, "#!/bin/sh\necho 'please edit store_cmd script'\nexit 1\n") < 0 || fflush(f)) {
+		perror("writing store_cmd file");
+		return 1;
+	}
+	fclose(f);
+
 	return 0;
 }
 
