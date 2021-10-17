@@ -27,6 +27,7 @@ struct level {
 	size_t entsize;
 	struct stat st;
 	const char *dev_name;
+	int dnamelen;
 };
 
 struct ctx {
@@ -37,9 +38,11 @@ struct ctx {
 	size_t bsize;
 	dev_t root_dev;
 	int xdev;
+	int verbose;
 	long long errorcount;
 	unsigned char *blockbuf;
 	FILE *out;
+	FILE *verbose_f;
 };
 
 FILE *ffopenat(int d, const char *name, int flags, mode_t mode)
@@ -129,6 +132,10 @@ int walk(unsigned char *roothash, int base_fd, struct ctx *ctx)
 	struct localindex *new_index = ctx->new_index;
 	const struct timespec *since = &prev_index->ts;
 	int r;
+	char *pathbuf;
+	size_t pathbuf_size;
+	FILE *path_f = open_memstream(&pathbuf, &pathbuf_size);
+	if (putc('/', path_f)<0) goto fail;
 
 	struct level *cur = malloc(sizeof *cur);
 	if (!cur) goto fail;
@@ -213,6 +220,9 @@ int walk(unsigned char *roothash, int base_fd, struct ctx *ctx)
 				new->d = fdopendir(fd);
 				new->st = st;
 				new->ents = open_memstream(&new->entdata, &new->entsize);
+				new->dnamelen = fprintf(path_f, "%s/", cur->de->d_name);
+				if (new->dnamelen<0)
+					goto fail;
 				if (!new->ents) goto fail;
 				write_ino(new->ents, &new->st);
 				fprintf(new->ents, "dents%c", 0);
@@ -230,9 +240,17 @@ int walk(unsigned char *roothash, int base_fd, struct ctx *ctx)
 			data = cur->entdata;
 			dlen = cur->entsize;
 			changed = cur->changed;
+			if (fseeko(path_f, -cur->dnamelen, SEEK_CUR)<0)
+				goto fail;
 			free(cur);
 			cur = parent;
 		}
+
+		char *name = cur ? cur->de->d_name : "";
+		int namelen = strlen(name);
+		if (fprintf(path_f, "%s%c", name, 0) < 0 || fflush(path_f) ||
+		    fseeko(path_f, -namelen-1, SEEK_CUR) < 0)
+			goto fail;
 
 		if (is_later_than(&st.st_ctim, since) ||
 		    is_later_than(&st.st_mtim, since))
@@ -309,6 +327,8 @@ int walk(unsigned char *roothash, int base_fd, struct ctx *ctx)
 			dlen = ino_len;
 		}
 
+		if (ctx->verbose) fprintf(ctx->verbose_f, "%s\n", pathbuf);
+
 		// rekey for the final blob which is referenced from the signed
 		// cleartext summary, so that previously used key is not linked
 		// with a timestamp.
@@ -361,6 +381,7 @@ int backup_main(int argc, char **argv, char *progname)
 	void (*usage)(char *) = backup_usage;
 	size_t bsize = 256*1024;
 	int xdev = 0;
+	int verbose = 0;
 	const char *sign_with = 0, *output_to = 0;
 	FILE *f, *out;
 	int out_piped = 0;
@@ -370,7 +391,7 @@ int backup_main(int argc, char **argv, char *progname)
 	int want_bloom = 1;
 	char bak_label[64] = "backup";
 
-	while ((c=getopt(argc, argv, "cb:xs:o:n")) >= 0) switch (c) {
+	while ((c=getopt(argc, argv, "cb:xs:o:nv")) >= 0) switch (c) {
 	case 'c':
 		commit_on_success = 1;
 		break;
@@ -388,6 +409,9 @@ int backup_main(int argc, char **argv, char *progname)
 		break;
 	case 'n':
 		dry_run = 1;
+		break;
+	case 'v':
+		verbose = 1;
 		break;
 	case '?':
 		usage(progname);
@@ -535,6 +559,8 @@ int backup_main(int argc, char **argv, char *progname)
 		.dev_map = dev_map,
 		.bsize = bsize,
 		.xdev = xdev,
+		.verbose = verbose,
+		.verbose_f = stdout,
 		.blockbuf = malloc(bsize+4),
 	};
 
