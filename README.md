@@ -3,6 +3,8 @@
 Incremental backup with strong cryptographic confidentiality baked
 into the data model. In a small package, with no dependencies.
 
+**This project is still experimental!** Things may break or change.
+See below on status.
 
 ## Features
 
