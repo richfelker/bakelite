@@ -111,7 +111,7 @@ int pubkey_main(int argc, char **argv, char *progname)
 
 static void init_usage(char *progname)
 {
-	printf("usage: %s init <pubkeyfile> <rootdir>\n", progname);
+	printf("usage: %s init [-b <blocksize>] [-l <label>] <pubkeyfile> <rootdir>\n", progname);
 }
 
 int init_main(int argc, char **argv, char *progname)
@@ -120,8 +120,16 @@ int init_main(int argc, char **argv, char *progname)
 	FILE *f;
 	unsigned char key[32];
 	void (*usage)(char *) = init_usage;
+	size_t bsize = 256<<10;
+	const char *label = "mybackup";
 
-	while ((c=getopt(argc, argv, "")) >= 0) switch (c) {
+	while ((c=getopt(argc, argv, "b:l:")) >= 0) switch (c) {
+	case 'b':
+		bsize = strtoull(optarg, 0, 0);
+		break;
+	case 'l':
+		label = optarg;
+		break;
 	case '?':
 		usage(progname);
 		return 1;
@@ -129,6 +137,14 @@ int init_main(int argc, char **argv, char *progname)
 
 	if (argc-optind != 2) {
 		usage(progname);
+		return 1;
+	}
+
+	if (bsize < 4000) {
+		fprintf(stderr, "block size %zu too small\n", bsize);
+		return 1;
+	} else if (bsize > 64<<20) {
+		fprintf(stderr, "block size %zu too large\n", bsize);
 		return 1;
 	}
 
@@ -197,6 +213,24 @@ int init_main(int argc, char **argv, char *progname)
 		return 1;
 	}
 	fclose(f);
+
+	fd = open("config", O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC, 0600);
+	if (fd < 0) {
+		perror("error creating config file");
+		return 1;
+	}
+	f = fdopen(fd, "wb");
+	if (!f) {
+		close(fd);
+		perror("fdopen");
+		return 1;
+	}
+	if (fprintf(f, "blocksize %zu\nlabel %s\n", bsize, label) < 0 || fflush(f)) {
+		perror("writing config file");
+		return 1;
+	}
+	fclose(f);
+
 	return 0;
 }
 
