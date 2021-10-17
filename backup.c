@@ -365,11 +365,12 @@ int backup_main(int argc, char **argv, char *progname)
 	FILE *f, *out;
 	int out_piped = 0;
 	int commit_on_success = 0;
+	int dry_run = 0;
 	struct stat st;
 	int want_bloom = 1;
 	char bak_label[64] = "backup";
 
-	while ((c=getopt(argc, argv, "cb:xs:o:")) >= 0) switch (c) {
+	while ((c=getopt(argc, argv, "cb:xs:o:n")) >= 0) switch (c) {
 	case 'c':
 		commit_on_success = 1;
 		break;
@@ -384,6 +385,9 @@ int backup_main(int argc, char **argv, char *progname)
 		break;
 	case 'o':
 		output_to = optarg;
+		break;
+	case 'n':
+		dry_run = 1;
 		break;
 	case '?':
 		usage(progname);
@@ -519,6 +523,10 @@ int backup_main(int argc, char **argv, char *progname)
 		perror("error opening new index for writing");
 		return 1;
 	}
+	if (dry_run) {
+		unlinkat(d, "index.pending", 0);
+		commit_on_success = 0;
+	}
 
 	struct ctx ctx = {
 		.prev_index = &prev_index,
@@ -547,13 +555,20 @@ int backup_main(int argc, char **argv, char *progname)
 	}
 	fclose(kf);
 
-	if (output_to) {
+	if (dry_run) {
+		out = ffopenat(d, "/dev/null", O_WRONLY, 0);
+		if (!out) {
+			perror("opening /dev/null");
+			return 1;
+		}
+	} else if (output_to) {
 		if (output_to[0] == '-' && !output_to[1]) {
 			out = stdout;
 		} else {
 			out = ffopenat(d, output_to, O_WRONLY|O_CREAT|O_EXCL, 0600);
 			if (!out) {
 				perror("creating output file");
+				return 1;
 			}
 		}
 	} else {
