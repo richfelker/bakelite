@@ -599,6 +599,10 @@ int backup_main(int argc, char **argv, char *progname)
 		}
 	} else {
 		out = popen("./store_cmd", "w");
+		if (!out) {
+			perror("opening pipe to store_cmd");
+			return 1;
+		}
 		out_piped = 1;
 		commit_on_success = 1;
 	}
