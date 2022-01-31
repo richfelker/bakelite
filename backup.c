@@ -633,7 +633,7 @@ int backup_main(int argc, char **argv, char *progname)
 	gmtime_r(&ts0.tv_sec, &tm);
 	char ts_str[60], summary_name[128];
 	strftime(ts_str, sizeof ts_str, "%Y-%m-%dT%H%M%S", &tm);
-	snprintf(summary_name, sizeof summary_name - 4, "%s-%s.%.9luZ.bak", bak_label, ts_str, ts0.tv_nsec);
+	snprintf(summary_name, sizeof summary_name - 4, "%s-%s.%.9luZ.txt", bak_label, ts_str, ts0.tv_nsec);
 	if (emit_clear_file(out, summary_name, sumdata, sumsize)) exit(1);
 
 	if (sign_with) {
