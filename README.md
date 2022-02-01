@@ -209,7 +209,7 @@ and between snapshots.)
 
    When the job is finished, a text file named according to the label
    and UTC backup timestamp, in the form
-   `label-yyyy-mm-ddThh:mm:ss.nnnnnnnnnZ.bak`, should be present on
+   `label-yyyy-mm-ddThhmmss.nnnnnnnnnZ.txt`, should be present on
    the backage storage medium, along with a number of files with hex
    string names in the `objects` directory. A `.sig` file will be
    present too if signing was configured.
@@ -226,7 +226,7 @@ It's recommended to test that you are able to restore backups. On a
 system with the secret key available, run the `restore` command, as
 in:
 
-    bakelite restore -v -k backup.sec -d /dest/path summary_file.bak
+    bakelite restore -v -k backup.sec -d /dest/path summary_file.txt
 
 If the secret key is protected by a passphrase you will need to enter
 it. (Note: passphrase-protected key files are not yet implemented.)
@@ -261,9 +261,9 @@ summary.
 From the directory containing the summary records and `objects`
 directory, run:
 
-    bakelite prune *.bak
+    bakelite prune *.txt
 
 This will output a list of relative object file pathnames which are
-not referenced by any of `*.bak`, which can be fed into `xargs` to
+not referenced by any of `*.txt`, which can be fed into `xargs` to
 actually delete them.
 
