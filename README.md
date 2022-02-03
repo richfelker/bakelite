@@ -197,6 +197,15 @@ and between snapshots.)
    associated with a particular role/identity, unless separate signing
    keys will be used for each tree being backed up.
 
+   To exclude files matching certain patterns from backups, create a
+   file named `exclude` containing one pattern per line. Patterns are
+   a superset of standard glob pattern functionality, intended to
+   match `.gitignore` conventions, except that inversion using leading
+   `!` is not supported. In particular, `**` can be used to match
+   zero or more path components, final `/` forces only directories to
+   match, and patterns with no `/` (except possibly a final one) can
+   match in any directory (they have an implicit `**/` prefix).
+
 7. Run the first backup.
 
         bakelite backup -v
