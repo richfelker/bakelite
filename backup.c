@@ -201,8 +201,10 @@ int walk(unsigned char *roothash, int base_fd, struct ctx *ctx)
 			if (st.st_dev != ctx->root_dev) {
 				char dev_label[2*sizeof(uintmax_t)+1];
 				snprintf(dev_label, sizeof dev_label, "%jx", (uintmax_t)st.st_dev);
-				if (!map_get(ctx->dev_map, dev_label) && !ctx->xdev)
+				if (!map_get(ctx->dev_map, dev_label) && !ctx->xdev) {
+					close(fd);
 					continue;
+				}
 			}
 
 			if (S_ISDIR(st.st_mode)) {
