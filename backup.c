@@ -16,6 +16,7 @@
 #include "crypto.h"
 #include "bloom.h"
 #include "binhex.h"
+#include "match.h"
 
 struct level {
 	struct level *parent;
@@ -43,6 +44,7 @@ struct ctx {
 	unsigned char *blockbuf;
 	FILE *out;
 	FILE *verbose_f;
+	struct matcher *excluder;
 };
 
 FILE *ffopenat(int d, const char *name, int flags, mode_t mode)
@@ -214,6 +216,16 @@ int walk(unsigned char *roothash, int base_fd, struct ctx *ctx)
 					close(fd);
 					continue;
 				}
+				int dnamelen = fprintf(path_f, "%s/%c", cur->de->d_name, 0);
+				if (dnamelen < 0 || fflush(path_f)) {
+					goto fail;
+				}
+				dnamelen--;
+				fseeko(path_f, -1, SEEK_CUR);
+				if (matcher_matches(ctx->excluder, pathbuf)) {
+					fseeko(path_f, -dnamelen, SEEK_CUR);
+					goto exclude;
+				}
 				struct level *new = malloc(sizeof *new);
 				if (!new) goto fail;
 				new->changed = 0;
@@ -221,7 +233,7 @@ int walk(unsigned char *roothash, int base_fd, struct ctx *ctx)
 				new->d = fdopendir(fd);
 				new->st = st;
 				new->ents = open_memstream(&new->entdata, &new->entsize);
-				new->dnamelen = fprintf(path_f, "%s/", cur->de->d_name);
+				new->dnamelen = dnamelen;
 				if (new->dnamelen<0)
 					goto fail;
 				if (!new->ents) goto fail;
@@ -252,6 +264,16 @@ int walk(unsigned char *roothash, int base_fd, struct ctx *ctx)
 		if (fprintf(path_f, "%s%c", name, 0) < 0 || fflush(path_f) ||
 		    fseeko(path_f, -namelen-1, SEEK_CUR) < 0)
 			goto fail;
+
+		if (matcher_matches(ctx->excluder, pathbuf)) {
+exclude:
+			r = localindex_getino(prev_index, st.st_dev, st.st_ino, 0);
+			if (r < 0) goto fail;
+			if (r) cur->changed = 1;
+			close(fd);
+//			fprintf(ctx->verbose_f, "EXCLUDING %s\n", pathbuf);
+			continue;
+		}
 
 		if (is_later_than(&st.st_ctim, since) ||
 		    is_later_than(&st.st_mtim, since))
@@ -527,6 +549,20 @@ int backup_main(int argc, char **argv, char *progname)
 		return 1;
 	}
 
+	f = ffopenat(d, "exclude", O_RDONLY|O_CLOEXEC, 0);
+	struct matcher *excluder = 0;
+	if (f) {
+		excluder = matcher_from_file(f);
+		if (!excluder) {
+			perror("loading exclusions");
+			return 1;
+		}
+		fclose(f);
+	} else if (errno != ENOENT) {
+		perror("opening exclude file");
+		return 1;
+	}
+
 	if (bsize < 4000) {
 		fprintf(stderr, "block size %zu too small\n", bsize);
 		return 1;
@@ -563,6 +599,7 @@ int backup_main(int argc, char **argv, char *progname)
 		.verbose = verbose,
 		.verbose_f = stdout,
 		.blockbuf = malloc(bsize+4),
+		.excluder = excluder,
 	};
 
 	if (!ctx.blockbuf) {
