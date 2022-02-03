@@ -207,6 +207,22 @@ int walk(unsigned char *roothash, int base_fd, struct ctx *ctx)
 				}
 			}
 
+			int namelen = fprintf(path_f, "%s%s%c", cur->de->d_name,
+				S_ISDIR(st.st_mode) ? "/" : "", 0) - 1;
+			if (namelen < 0 || fflush(path_f) ||
+			    fseeko(path_f, -1, SEEK_CUR) < 0)
+				goto fail;
+			if (matcher_matches(ctx->excluder, pathbuf)) {
+				if (fseeko(path_f, -namelen, SEEK_CUR) < 0)
+					goto fail;
+				r = localindex_getino(prev_index, st.st_dev, st.st_ino, 0);
+				if (r < 0) goto fail;
+				if (r) cur->changed = 1;
+				close(fd);
+//				fprintf(ctx->verbose_f, "EXCLUDING %s\n", pathbuf);
+				continue;
+			}
+
 			if (S_ISDIR(st.st_mode)) {
 				if (localindex_getino(new_index, st.st_dev, st.st_ino, 0) > 0) {
 					fprintf(stderr, "skipping already-visited directory (%s %jx:%ju)\n",
@@ -216,16 +232,6 @@ int walk(unsigned char *roothash, int base_fd, struct ctx *ctx)
 					close(fd);
 					continue;
 				}
-				int dnamelen = fprintf(path_f, "%s/%c", cur->de->d_name, 0);
-				if (dnamelen < 0 || fflush(path_f)) {
-					goto fail;
-				}
-				dnamelen--;
-				fseeko(path_f, -1, SEEK_CUR);
-				if (matcher_matches(ctx->excluder, pathbuf)) {
-					fseeko(path_f, -dnamelen, SEEK_CUR);
-					goto exclude;
-				}
 				struct level *new = malloc(sizeof *new);
 				if (!new) goto fail;
 				new->changed = 0;
@@ -233,7 +239,7 @@ int walk(unsigned char *roothash, int base_fd, struct ctx *ctx)
 				new->d = fdopendir(fd);
 				new->st = st;
 				new->ents = open_memstream(&new->entdata, &new->entsize);
-				new->dnamelen = dnamelen;
+				new->dnamelen = namelen;
 				if (new->dnamelen<0)
 					goto fail;
 				if (!new->ents) goto fail;
@@ -241,6 +247,9 @@ int walk(unsigned char *roothash, int base_fd, struct ctx *ctx)
 				fprintf(new->ents, "dents%c", 0);
 				cur = new;
 				continue;
+			} else {
+				if (fseeko(path_f, -namelen, SEEK_CUR)<0)
+					goto fail;
 			}
 		} else {
 			if (errno) goto fail;
@@ -257,22 +266,6 @@ int walk(unsigned char *roothash, int base_fd, struct ctx *ctx)
 				goto fail;
 			free(cur);
 			cur = parent;
-		}
-
-		char *name = cur ? cur->de->d_name : "";
-		int namelen = strlen(name);
-		if (fprintf(path_f, "%s%c", name, 0) < 0 || fflush(path_f) ||
-		    fseeko(path_f, -namelen-1, SEEK_CUR) < 0)
-			goto fail;
-
-		if (matcher_matches(ctx->excluder, pathbuf)) {
-exclude:
-			r = localindex_getino(prev_index, st.st_dev, st.st_ino, 0);
-			if (r < 0) goto fail;
-			if (r) cur->changed = 1;
-			close(fd);
-//			fprintf(ctx->verbose_f, "EXCLUDING %s\n", pathbuf);
-			continue;
 		}
 
 		if (is_later_than(&st.st_ctim, since) ||
