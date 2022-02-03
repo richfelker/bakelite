@@ -27,7 +27,6 @@ struct level {
 	char *entdata;
 	size_t entsize;
 	struct stat st;
-	const char *dev_name;
 	int dnamelen;
 };
 
@@ -202,8 +201,7 @@ int walk(unsigned char *roothash, int base_fd, struct ctx *ctx)
 			if (st.st_dev != ctx->root_dev) {
 				char dev_label[2*sizeof(uintmax_t)+1];
 				snprintf(dev_label, sizeof dev_label, "%jx", (uintmax_t)st.st_dev);
-				cur->dev_name = map_get(ctx->dev_map, dev_label);
-				if (!cur->dev_name && !ctx->xdev)
+				if (!map_get(ctx->dev_map, dev_label) && !ctx->xdev)
 					continue;
 			}
 
