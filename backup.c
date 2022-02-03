@@ -166,13 +166,14 @@ int walk(unsigned char *roothash, int base_fd, struct ctx *ctx)
 				if (cur->de->d_name[1] == '.' && !cur->de->d_name[2]) continue;
 			}
 
-			do fd = openat(dirfd(cur->d), cur->de->d_name, O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_NOCTTY);
+			do fd = openat(dirfd(cur->d), cur->de->d_name, O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_NOCTTY|O_NONBLOCK);
 			while (fd < 0 && errno == ELOOP && fstatat(dirfd(cur->d), cur->de->d_name, &st, AT_SYMLINK_NOFOLLOW));
 			if (fd < 0 && errno != ELOOP) {
 				fprintf(stderr, "error opening %s: %s\n", cur->de->d_name, strerror(errno));
 				ctx->errorcount++;
 				continue;
 			}
+			if (fd >= 0) fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) & ~O_NONBLOCK);
 
 			if (fd >= 0 && fstat(fd, &st)) {
 				fprintf(stderr, "failed to stat %s: %s\n", cur->de->d_name, strerror(errno));
