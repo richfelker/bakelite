@@ -171,7 +171,9 @@ and between snapshots.)
 
    In the latter (ssh) case, the remote `authorized_keys` file should
    force a `command` that stores the tar stream appropriately and
-   disallows overwrite of existing data.
+   disallows overwrite of existing data. For example:
+
+        command="tar -C /media/backup -kxf -" ssh-ed25519 AAAA...
 
 4. Configure devices. Normally, Bakelite will not traverse mount
    points to other devices; this avoids accidentally including
