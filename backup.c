@@ -262,7 +262,8 @@ int walk(unsigned char *roothash, int base_fd, struct ctx *ctx)
 			data = cur->entdata;
 			dlen = cur->entsize;
 			changed = cur->changed;
-			if (fseeko(path_f, -cur->dnamelen, SEEK_CUR)<0)
+			if (fputc(0, path_f)<0 || fflush(path_f) ||
+			    fseeko(path_f, -cur->dnamelen-1, SEEK_CUR)<0)
 				goto fail;
 			free(cur);
 			cur = parent;
