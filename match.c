@@ -145,7 +145,7 @@ int matcher_matches(struct matcher *m, const char *s)
 {
 	if (!m) return 0;
 	int r = regexec(&m->re, s, 0, 0, 0);
-	if (r==REG_OK) return 1;
+	if (r==0) return 1;
 	if (r==REG_NOMATCH) return 0;
 	return -1;
 }
