@@ -75,7 +75,6 @@ static int emit_file_blocks(FILE *in, FILE *out, dev_t dev, ino_t ino, FILE *blo
 	struct crypto_context *cc = &ctx->cc;
 	unsigned char *buf = ctx->blockbuf;
 
-	// format of block, 0=raw is the only one defined now
 	for (long long idx=0; ; idx++) {
 		size_t len = fread(buf+4, 1, bsize, in);
 		if (len < bsize && !feof(in))
@@ -85,6 +84,7 @@ static int emit_file_blocks(FILE *in, FILE *out, dev_t dev, ino_t ino, FILE *blo
 		unsigned char hash[HASHLEN];
 		memcpy(buf, "blk", 4);
 		sha3(buf, len+4, hash, HASHLEN);
+		// format of block, 0=raw is the only one defined now
 		memcpy(buf, "\0\0\0", 4);
 		if (localindex_setdep(new_index, dev, ino, idx, hash) < 0)
 			goto fail;
