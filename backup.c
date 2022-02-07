@@ -240,8 +240,6 @@ int walk(unsigned char *roothash, int base_fd, struct ctx *ctx)
 				new->st = st;
 				new->ents = open_memstream(&new->entdata, &new->entsize);
 				new->dnamelen = namelen;
-				if (new->dnamelen<0)
-					goto fail;
 				if (!new->ents) goto fail;
 				write_ino(new->ents, &new->st);
 				fprintf(new->ents, "dents%c", 0);
