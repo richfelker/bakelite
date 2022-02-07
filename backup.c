@@ -157,6 +157,8 @@ int walk(unsigned char *roothash, int base_fd, struct ctx *ctx)
 		size_t dlen = 0;
 		int changed = 0;
 		int fd = -1;
+		char linkbuf[PATH_MAX];
+		ssize_t linklen = 0;
 
 		errno = 0;
 		cur->de = readdir(cur->d);
@@ -184,9 +186,17 @@ int walk(unsigned char *roothash, int base_fd, struct ctx *ctx)
 			}
 
 			switch (st.st_mode & S_IFMT) {
+			case S_IFLNK:
+				linklen = readlinkat(dirfd(cur->d), cur->de->d_name, linkbuf, sizeof linkbuf);
+				if (linklen < 0) {
+					fprintf(stderr, "failed to read symlink %s: %s\n", cur->de->d_name, strerror(errno));
+					ctx->errorcount++;
+					close(fd);
+					continue;
+				}
+				break;
 			case S_IFDIR:
 			case S_IFREG:
-			case S_IFLNK:
 			case S_IFIFO:
 				break;
 			default:
@@ -334,10 +344,8 @@ int walk(unsigned char *roothash, int base_fd, struct ctx *ctx)
 				}
 				fclose(f);
 			} else if (S_ISLNK(st.st_mode)) {
-				char linkbuf[PATH_MAX];
-				size_t l = readlinkat(dirfd(cur->d), cur->de->d_name, linkbuf, sizeof linkbuf);
 				fprintf(ino_f, "idata%c", 0);
-				fwrite(linkbuf, 1, l, ino_f);
+				fwrite(linkbuf, 1, linklen, ino_f);
 			}
 
 			if (fflush(ino_f) || ferror(ino_f))
