@@ -237,6 +237,7 @@ int walk(unsigned char *roothash, int base_fd, struct ctx *ctx)
 				new->changed = 0;
 				new->parent = cur;
 				new->d = fdopendir(fd);
+				if (!new->d) goto fail;
 				new->st = st;
 				new->ents = open_memstream(&new->entdata, &new->entsize);
 				new->dnamelen = namelen;
@@ -287,6 +288,7 @@ int walk(unsigned char *roothash, int base_fd, struct ctx *ctx)
 					if (r < 0) goto fail;
 					if (!r) break;
 					r = localindex_setdep(new_index, st.st_dev, st.st_ino, i, block_hash);
+					if (r < 0) goto fail;
 					r = localindex_getblock(prev_index, block_hash, cipher_hash);
 					if (r <= 0) goto fail;
 					if (!localindex_getblock(new_index, block_hash, 0)) {
@@ -338,6 +340,8 @@ int walk(unsigned char *roothash, int base_fd, struct ctx *ctx)
 				fwrite(linkbuf, 1, l, ino_f);
 			}
 
+			if (fflush(ino_f) || ferror(ino_f))
+				goto fail;
 			fclose(ino_f);
 			data = ino_data;
 			dlen = ino_len;
