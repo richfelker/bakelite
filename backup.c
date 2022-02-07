@@ -255,7 +255,8 @@ int walk(unsigned char *roothash, int base_fd, struct ctx *ctx)
 			struct level *parent = cur->parent;
 			closedir(cur->d);
 			fd = -1;
-			if (ferror(cur->ents)) goto fail;
+			if (fflush(cur->ents) || ferror(cur->ents))
+				goto fail;
 			fclose(cur->ents);
 			data = cur->entdata;
 			dlen = cur->entsize;
