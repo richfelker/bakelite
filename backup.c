@@ -579,7 +579,9 @@ int backup_main(int argc, char **argv, char *progname)
 
 	int new_index_fd = openat(d, "index.pending", O_RDWR|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC, 0600);
 	if (new_index_fd>=0) {
-		if (localindex_create(&new_index, new_index_fd, &ts0, dev_map) < 0)
+		if (localindex_create(&new_index, new_index_fd, dev_map) < 0)
+			return 1;
+		if (localindex_settimestamp(&new_index, &ts0) < 0)
 			return 1;
 	} else {
 		if (errno == EEXIST) {

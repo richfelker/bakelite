@@ -99,9 +99,19 @@ int localindex_null(struct localindex *idx)
 	return 0;
 }
 
-int localindex_create(struct localindex *idx, int fd, const struct timespec *ts, const struct map *devmap)
+int localindex_settimestamp(struct localindex *idx, const struct timespec *ts)
 {
+	char buf[256];
+	buf[0] = snprintf(buf+1, sizeof buf-1, "%jd.%.9ld", (intmax_t)ts->tv_sec, ts->tv_nsec);
+	if (flatmap_set(&idx->m, idx->meta_table, "timestamp", 9, buf, buf[0]+1) < 0)
+		return -1;
 	idx->ts = *ts;
+	return 0;
+}
+
+int localindex_create(struct localindex *idx, int fd, const struct map *devmap)
+{
+	idx->ts = (struct timespec){0};
 	idx->devmap = devmap;
 	idx->obj_count = 0;
 	char label[] = "bakelite index\n";
@@ -117,12 +127,6 @@ int localindex_create(struct localindex *idx, int fd, const struct timespec *ts,
 	if (idx->ino_table < 0 || idx->dep_table < 0 || idx->blk_table < 0 || idx->meta_table < 0)
 		return -1;
 
-	char buf[256];
-	buf[0] = snprintf(buf+1, sizeof buf-1, "%jd.%.9ld", (intmax_t)ts->tv_sec, ts->tv_nsec);
-
-	if (flatmap_set(&idx->m, idx->meta_table, "timestamp", 9, buf, buf[0]+1) < 0)
-		return -1;
-	
 	return 0;
 }
 
