@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 #include <stdint.h>
 #include <errno.h>
+#include <time.h>
 #include "chacha20.h"
 #include "x25519.h"
 #include "crypto.h"
@@ -14,6 +15,7 @@
 #include "map.h"
 #include "binhex.h"
 #include "store.h"
+#include "localindex.h"
 
 struct decrypt_context {
 	const unsigned char *rcpt_secret;
@@ -104,6 +106,7 @@ struct ctx {
 	int progress;
 	int stop_on_errors;
 	int objdir;
+	struct localindex *new_index;
 };
 
 struct level {
@@ -153,6 +156,7 @@ static int do_restore(const char *dest, const unsigned char *roothash, struct ct
 	struct level *cur = calloc(1, sizeof *cur);
 	struct map *hardlink_map = map_create();
 	cur->name = dest;
+	cur->hash = roothash;
 	cur->data = load_and_decrypt_hash(&cur->dlen, roothash, ctx->objdir, &ctx->dc);
 	if (!cur->data) goto fail;
 	for (;;) {
@@ -263,11 +267,22 @@ static int do_restore(const char *dest, const unsigned char *roothash, struct ct
 			FILE *f = fdopen(dupe(cur->fd), "wb");
 			if (!f) goto fail;
 			if (got_blocks) {
-				for (; cur->pos+HASHLEN <= cur->dlen; cur->pos+=HASHLEN) {
+				struct stat st;
+				int got_stat = !fstat(cur->fd, &st);
+				for (uint64_t i=0; cur->pos+HASHLEN <= cur->dlen; i++, cur->pos+=HASHLEN) {
+					const unsigned char *bhash = cur->data+cur->pos;
 					size_t blen;
-					unsigned char *block = load_and_decrypt_hash(&blen, cur->data+cur->pos, ctx->objdir, &ctx->dc);
+					unsigned char *block = load_and_decrypt_hash(&blen, bhash, ctx->objdir, &ctx->dc);
 					if (blen < 4) goto fail;
 					fwrite(block+4, 1, blen-4, f);
+					if (ctx->new_index) {
+						unsigned char clearhash[HASHLEN];
+						memcpy(block, "blk", 4);
+						sha3(block, blen, clearhash, HASHLEN);
+						localindex_setblock(ctx->new_index, clearhash, bhash);
+						if (got_stat)
+							localindex_setdep(ctx->new_index, st.st_dev, st.st_ino, i, clearhash);
+					}
 					free(block);
 				}
 				if (cur->pos != cur->dlen) goto fail;
@@ -306,6 +321,15 @@ static int do_restore(const char *dest, const unsigned char *roothash, struct ct
 				error_msg(cur, "futimens");
 			}
 		}
+		if (ctx->new_index) {
+			struct stat st;
+			int r = S_ISLNK(cur->mode)
+				? fstatat(cur->parent->fd, cur->name, &st, AT_SYMLINK_NOFOLLOW)
+				: fstat(cur->fd, &st);
+			if (!r) {
+				localindex_setino(ctx->new_index, st.st_dev, st.st_ino, cur->hash);
+			}
+		}
 ino_done:
 		if (cur->fd >= 0) close(cur->fd);
 		if (!ctx->verbose && ctx->progress) {
@@ -339,9 +363,11 @@ int restore_main(int argc, char **argv, char *progname)
 	const char *roothash_string = 0;
 	const char *destdir = 0;
 	const char *keyfile = 0;
+	const char *index_file = 0;
 	int verbose = 0, progress = 0, stop_on_errors = 0;
+	struct localindex new_index;
 
-	while ((c=getopt(argc, argv, "r:d:k:vPS")) >= 0) switch (c) {
+	while ((c=getopt(argc, argv, "r:d:k:vPSi:")) >= 0) switch (c) {
 	case 'r':
 		// FIXME: not used for now
 		roothash_string = optarg;
@@ -360,6 +386,9 @@ int restore_main(int argc, char **argv, char *progname)
 		break;
 	case 'S':
 		stop_on_errors = 1;
+		break;
+	case 'i':
+		index_file = optarg;
 		break;
 	case '?':
 		usage(progname);
@@ -411,6 +440,23 @@ int restore_main(int argc, char **argv, char *progname)
 	fread(rcpt_secret, 1, 32, kf);
 	fclose(kf);
 
+	if (index_file) {
+		struct map *dev_map = map_create();
+		struct stat st;
+		fstat(d, &st);
+		char root_dev_str[2*sizeof(dev_t)+1];
+		snprintf(root_dev_str, sizeof root_dev_str, "%jx", (uintmax_t)st.st_dev);
+		map_set(dev_map, root_dev_str, "");
+		int new_index_fd = open(index_file, O_RDWR|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC, 0600);
+		if (new_index_fd>=0) {
+			if (localindex_create(&new_index, new_index_fd, dev_map) < 0)
+				return 1;
+		} else {
+			perror("error opening new index for writing");
+			return 1;
+		}
+	}
+
 	struct ctx ctx = {
 		.progress = progress,
 		.verbose = verbose,
@@ -418,6 +464,7 @@ int restore_main(int argc, char **argv, char *progname)
 		.objdir = d,
 		.dc.rcpt_secret = rcpt_secret,
 		.dc.ephemeral_map = map_create(),
+		.new_index = index_file ? &new_index : 0,
 	};
 	unsigned char roothash[HASHLEN];
 	if (strlen(roothash_string) != 2*HASHLEN) {
@@ -433,5 +480,12 @@ int restore_main(int argc, char **argv, char *progname)
 		fprintf(stderr, "restore incomplete\n");
 		return 1;
 	}
+
+	if (index_file) {
+		struct timespec ts;
+		clock_gettime(CLOCK_REALTIME, &ts);
+		localindex_settimestamp(&new_index, &ts);
+	}
+
 	return 0;
 }
