@@ -208,6 +208,12 @@ and between snapshots.)
    match, and patterns with no `/` (except possibly a final one) can
    match in any directory (they have an implicit `**/` prefix).
 
+   If the directory containing backup configuration is included in the
+   backup, it is recommended to exclude `index*` from this directory,
+   since the `index` will be out-of-date at the time of backup and
+   `index.pending` will be incomplete. Instead of backing it up, the
+   `index` file can be recreated at restore time if desired.
+
 7. Run the first backup.
 
         bakelite backup -v
@@ -245,6 +251,10 @@ it. (Note: passphrase-protected key files are not yet implemented.)
 By default, objects are searched for in `objects/` relative to the
 location of the summary file (the same as the default tree layout in
 the tar stream emitted by the `backup` command for storage).
+
+If you wish to continue incremental use of the backup after restore,
+you will need to rebuild the local index as part of the restore
+operation, using the `-i index` option.
 
 During testing, original and restored trees should be compared, either
 directly with a tool like `diff` or by recursively printing hashes and
