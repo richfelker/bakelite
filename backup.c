@@ -172,6 +172,8 @@ int walk(unsigned char *roothash, int base_fd, struct ctx *ctx)
 			do fd = openat(dirfd(cur->d), cur->de->d_name, O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_NOCTTY|O_NONBLOCK);
 			while (fd < 0 && errno == ELOOP && fstatat(dirfd(cur->d), cur->de->d_name, &st, AT_SYMLINK_NOFOLLOW));
 			if (fd < 0 && errno != ELOOP) {
+				// silently ignore unix sockets (& bad device nodes)
+				if (errno == ENXIO) continue;
 				fprintf(stderr, "error opening %s: %s\n", cur->de->d_name, strerror(errno));
 				ctx->errorcount++;
 				continue;
