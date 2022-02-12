@@ -288,3 +288,24 @@ This will output a list of relative object file pathnames which are
 not referenced by any of `*.txt`, which can be fed into `xargs` to
 actually delete them.
 
+Bakelite includes simple retention policy for backup summaries via the
+`cull` subcommand:
+
+    bakelite cull -d7 -w4 -m4 -y1 *.txt
+
+will scan the timestamps in the provided files (`*.txt`) and output a
+list of which can be deleted while still keeping the latest from each
+of the last 7 days, 4 weeks, 4 months, and 1 year. In addition, all in
+a given range of seconds (default 86400, selected by `-r`) before the
+latest will be kept. As with `prune`, the output of `bakelite cull`
+can be piped into `xargs` for actual deletion (or moving files to
+stage them for deletion).
+
+Eventually, `cull` will include label matching and signature checking
+to ensure that untrusted or erroneously included files from another
+backup are not used in computing the results, but this functionality
+is not yet implemented.
+
+By scheduling the appropriate `cull` and `prune` commands on a backup
+storage host, continuous incremental backups can be kept in bounded
+storage space.
