@@ -11,6 +11,7 @@ int commit_main(int, char **, char *);
 int abort_main(int, char **, char *);
 int restore_main(int, char **, char *);
 int prune_main(int, char **, char *);
+int cull_main(int, char **, char *);
 
 static void usage(char *progname)
 {
@@ -55,6 +56,8 @@ int main(int argc, char **argv)
 		return restore_main(argc, argv, progname);
 	} else if (!strcmp(cmd, "prune")) {
 		return prune_main(argc, argv, progname);
+	} else if (!strcmp(cmd, "cull")) {
+		return cull_main(argc, argv, progname);
 	} else {
 		printf("unknown command: %s\n", cmd);
 		usage(progname);
