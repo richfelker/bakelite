@@ -2,14 +2,10 @@
 #include <stdint.h>
 #include <string.h>
 #include <unistd.h>
-#include "endian.h"
+#include <endian.h>
 #include "crypto.h"
 #include "x25519.h"
 #include "sha3.h"
-
-#ifdef __APPLE__
-#include <sys/random.h>
-#endif
 
 uint64_t get_nonce(struct crypto_context *cc)
 {
