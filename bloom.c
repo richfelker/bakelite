@@ -1,7 +1,9 @@
+#include "config.h"
+
 #include <stdint.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <endian.h>
+#include "compats/unistd.h"
+#include "compats/endian.h"
 #include "crypto.h"
 #include "sha3.h"
 #include "bloom.h"

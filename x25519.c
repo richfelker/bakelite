@@ -1,5 +1,7 @@
 /* extracted from 20140427 tweetnacl (public domain) */
 
+#include "config.h"
+
 #include "x25519.h"
 
 #define FOR(i,n) for (i = 0;i < n;++i)

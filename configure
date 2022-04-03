@@ -1,0 +1,140 @@
+#!/usr/bin/env sh
+set -e
+
+MAKE_FLAGS=""
+
+## Avoid environment leakage, taken from https://github.com/kristapsdz/oconfigure/blob/master/configure#L81
+CC=$(printf "all:\\n\\t@echo \\\$(CC)\\n" | make ${MAKE_FLAGS} -sf -)
+CFLAGS=$(printf "all:\\n\\t@echo \\\$(CFLAGS)\\n" | make ${MAKE_FLAGS} -sf -)
+CFLAGS="${CFLAGS} -g -W -Wall -Wextra -Wmissing-prototypes -Wstrict-prototypes"
+CFLAGS="${CFLAGS} -Wwrite-strings -Wno-unused-parameter"
+CPPFLAGS=
+LDFLAGS=
+
+## pipe2(2)
+# Linux, OpenBSD and FreeBSD have this function in <unistd.h>
+# macOS does not have this function at all
+HAVE_PIPE2=
+
+## endian.h
+# Most operating systems (such as Linux and OpenBSD) have these functions in <endian.h>
+HAVE_ENDIAN_H=
+# FreeBSD has these functions in <sys/endian.h>
+HAVE_SYS_ENDIAN_H=
+# macOS has its own functions, declared in <libkern/OSByteOrder.h>
+HAVE_OSBYTEORDER_H=
+
+## getentropy(2)
+# Linux, FreeBSD and OpenBSD have this function in <unistd.h>
+HAVE_GETENTROPY_UNISTD_H=
+# macOS has this function in <sys/random.h>
+HAVE_GETENTROPY_SYS_RANDOM_H=
+
+## stat(2)
+# The standard names for the timespec fields in the `struct stat` structure are `st_[amc]tim`
+# macOS, for some reason, has them named `st_[amc]timespec`
+
+# TODO: This variable could have a better name?
+HAVE_STAT_AMC_TIM=
+HAVE_STAT_AMC_TIMESPEC=
+
+### Tests
+## pipe2(2)
+printf "$1: testing for pipe2(2)... "
+cc -x c - 2>/dev/null <<EOF && HAVE_PIPE2=1 || true
+#include <unistd.h>
+int main() {
+	pipe2(NULL, 0);
+	return 0;
+}
+EOF
+echo "${HAVE_PIPE2:-fail}"
+
+## endian.h
+printf "$1: testing for <endian.h>... "
+cc -x c - 2>/dev/null <<EOF && HAVE_ENDIAN_H=1 || true
+#include <endian.h>
+int main() {
+	return 0;
+}
+EOF
+echo "${HAVE_ENDIAN_H:-fail}"
+
+if [ "$HAVE_ENDIAN_H" == "" ]; then
+	printf "$1: testing for <sys/endian.h>... "
+	cc -x c - 2>/dev/null <<EOF && HAVE_SYS_ENDIAN_H=1 || true
+	#include <sys/endian.h>
+	int main() {
+		return 0;
+	}
+EOF
+	echo "${HAVE_SYS_ENDIAN_H:-fail}"
+fi
+
+if [ "$HAVE_SYS_ENDIAN_H" == "" ]; then
+	printf "$1: testing for <libkern/OSByteOrder.h>... "
+	cc -x c - 2>/dev/null <<EOF && HAVE_OSBYTEORDER_H=1 || true
+	#include <libkern/OSByteOrder.h>
+	int main() {
+		return 0;
+	}
+EOF
+	echo "${HAVE_OSBYTEORDER_H:-fail}"
+fi
+
+## getentropy(2)
+printf "$1: testing for getentropy(2) on <unistd.h>... "
+cc -x c - 2>/dev/null <<EOF && HAVE_GETENTROPY_UNISTD_H=1 || true
+#include <unistd.h>
+int main() {
+	getentropy(NULL, 0);
+	return 0;
+}
+EOF
+echo "${HAVE_GETENTROPY_UNISTD_H:-fail}"
+
+if [ "$HAVE_GETENTROPY_UNISTD_H" == "" ]; then
+	printf "$1: testing for getentropy(2) on <sys/random.h>... "
+	cc -x c - 2>/dev/null <<EOF && HAVE_GETENTROPY_SYS_RANDOM_H=1 || true
+	#include <sys/random.h>
+	int main() {
+		getentropy(NULL, 0);
+		return 0;
+	}
+EOF
+	echo "${HAVE_GETENTROPY_SYS_RANDOM_H:-fail}"
+fi
+
+## stat(2)
+printf "$1: testing for /st_[amc]tim/ fields in struct stat... "
+cc -x c - 2>/dev/null <<EOF && HAVE_STAT_AMC_TIM=1 || true
+#include <sys/stat.h>
+int main() {
+	struct stat st;
+	st.st_atim;
+	st.st_mtim;
+	st.st_ctim;
+	return 0;
+}
+EOF
+echo "${HAVE_STAT_AMC_TIM:-fail}"
+
+if [ "${HAVE_STAT_AMC_TIM}" == "" ]; then
+	printf "$1: testing for /st_[amc]timespec/ fields in struct stat... "
+	cc -x c - 2>/dev/null <<EOF && HAVE_STAT_AMC_TIMESPEC=1 || true
+	#include <sys/stat.h>
+	int main() {
+		struct stat st;
+		st.st_atimespec;
+		st.st_mtimespec;
+		st.st_ctimespec;
+		return 0;
+	}
+EOF
+	echo "${HAVE_STAT_AMC_TIMESPEC:-fail}"
+fi
+
+rm -f config.h
+for i in PIPE2 ENDIAN_H SYS_ENDIAN_H OSBYTEORDER_H GETENTROPY_UNISTD_H GETENTROPY_SYS_RANDOM_H STAT_AMC_TIM STAT_AMC_TIMESPEC; do
+	eval "[ \"\${HAVE_${i}}\" != \"\" ]" && echo "#define HAVE_${i}" >> config.h
+done

@@ -1,8 +1,10 @@
+#include "config.h"
+
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
-#include <unistd.h>
-#include <endian.h>
+#include "compats/unistd.h"
+#include "compats/endian.h"
 #include "crypto.h"
 #include "x25519.h"
 #include "sha3.h"

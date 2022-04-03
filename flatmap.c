@@ -1,10 +1,12 @@
+#include "config.h"
+
 #include <stdint.h>
 #include <string.h>
-#include <unistd.h>
-#include <endian.h>
+#include "compats/unistd.h"
+#include "compats/endian.h"
 #include <errno.h>
 #include <sys/mman.h>
-#include <sys/stat.h>
+#include "compats/stat.h"
 #include <fcntl.h>
 #include "flatmap.h"
 

@@ -1,4 +1,4 @@
-SRCS = main.c backup.c restore.c misccmds.c prune.c cull.c map.c flatmap.c localindex.c crypto.c store.c x25519.c sha3.c chacha20.c bloom.c binhex.c match.c
+SRCS = compats.c backup.c restore.c misccmds.c prune.c cull.c map.c flatmap.c localindex.c crypto.c store.c x25519.c sha3.c chacha20.c bloom.c binhex.c match.c main.c
 OBJS = $(SRCS:.c=.o)
 
 CFLAGS = -g -O3 -Wall

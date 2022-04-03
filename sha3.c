@@ -28,7 +28,9 @@
 // Revised 07-Aug-15 to match with official release of FIPS PUB 202 "SHA3"
 // Revised 03-Sep-15 for portability + OpenSSL - style API
 
-#include <endian.h>
+#include "config.h"
+
+#include "compats/endian.h"
 #include "sha3.h"
 
 // update the state with given number of rounds

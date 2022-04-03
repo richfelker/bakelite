@@ -1,10 +1,12 @@
+#include "config.h"
+
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <endian.h>
+#include "compats/endian.h"
 #include <spawn.h>
-#include <unistd.h>
+#include "compats/unistd.h"
 #include <sys/wait.h>
 #include <fcntl.h>
 #include "sha3.h"

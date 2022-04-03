@@ -1,3 +1,5 @@
+#include "config.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -8,7 +10,7 @@
 #include "bloom.h"
 #include "crypto.h"
 #include "map.h"
-#include <unistd.h>
+#include "compats/unistd.h"
 
 #include "localindex.h"
 
