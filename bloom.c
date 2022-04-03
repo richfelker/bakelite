@@ -1,10 +1,14 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <endian.h>
+#include "endian.h"
 #include "crypto.h"
 #include "sha3.h"
 #include "bloom.h"
+
+#ifdef __APPLE__
+#include <sys/random.h>
+#endif
 
 struct bloom *bloom_create(int k, size_t l)
 {

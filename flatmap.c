@@ -1,7 +1,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <unistd.h>
-#include <endian.h>
+#include "endian.h"
 #include <errno.h>
 #include <sys/mman.h>
 #include <sys/stat.h>

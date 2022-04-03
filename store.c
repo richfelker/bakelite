@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <endian.h>
+#include "endian.h"
 #include <spawn.h>
 #include <unistd.h>
 #include <sys/wait.h>
@@ -12,6 +12,16 @@
 #include "chacha20.h"
 #include "binhex.h"
 #include "store.h"
+
+#ifdef __APPLE__
+int pipe2(int fildes[2], int flags) {
+	int res = 0;
+	if ((res = pipe(fildes)) < 0) return res;
+	if ((fcntl(fildes[0], F_SETFD, O_CLOEXEC)) < 0) return res;
+	if ((fcntl(fildes[1], F_SETFD, O_CLOEXEC)) < 0) return res;
+	return 0;
+}
+#endif
 
 int emit_file_record(FILE *f, const char *name, size_t len)
 {

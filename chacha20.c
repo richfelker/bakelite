@@ -1,6 +1,6 @@
 #include <string.h>
 #include <stdint.h>
-#include <endian.h>
+#include "endian.h"
 #include "chacha20.h"
 
 static inline uint32_t rol(uint32_t x, int i)

@@ -8,6 +8,10 @@
 #include <dirent.h>
 #include "x25519.h"
 
+#ifdef __APPLE__
+#include <sys/random.h>
+#endif
+
 static void genkey_usage(char *progname)
 {
 	printf("usage: %s genkey <file>\n", progname);
