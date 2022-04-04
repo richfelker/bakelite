@@ -11,6 +11,8 @@ HAVE_ENDIAN_H=
 HAVE_SYS_ENDIAN_H=
 # macOS has its own functions, declared in <libkern/OSByteOrder.h>
 HAVE_OSBYTEORDER_H=
+# FreeBSD and NetBSD have some non-standard names for some endianness macros
+HAVE_ENDIAN_NONSTANDARD_TOH=1
 
 ## getentropy(2)
 # Linux, FreeBSD and OpenBSD have this function in <unistd.h>
@@ -19,6 +21,9 @@ HAVE_GETENTROPY_UNISTD_H=
 HAVE_GETENTROPY_SYS_RANDOM_H=
 # NetBSD does not have this function, but can be written in userspace to act similarly
 USE_NETBSD_GETENTROPY=
+
+# 
+_ENDIANNESS=
 
 ## stat(2)
 # The standard names for the timespec fields in the `struct stat` structure are `st_[amc]tim`
@@ -70,6 +75,17 @@ if [ "$HAVE_SYS_ENDIAN_H" = "" ] && [ "$HAVE_ENDIAN_H" = "" ]; then
 	}
 EOF
 	echo "${HAVE_OSBYTEORDER_H:-fail}"
+fi
+
+if [ "$HAVE_SYS_ENDIAN_H" = "1" ] && [ "$HAVE_ENDIAN_H" = "1" ]; then
+	printf "$1: testing for non-standard endian macros... "
+	cc -x c - 2>/dev/null <<EOF && HAVE_ENDIAN_NONSTANDARD_TOH= || true
+#include <endian.h>
+int main() {
+	return be64toh(0);
+}
+EOF
+	echo "${HAVE_ENDIAN_NONSTANDARD_TOH:-non-standard}"
 fi
 
 ## getentropy(2)
@@ -129,13 +145,43 @@ EOF
 	echo "${HAVE_STAT_AMC_TIMESPEC:-fail}"
 fi
 
+printf "$1: testing platform's endianness... "
+cc -x c - 2>/dev/null <<EOF
+#include <stdint.h>
+#include <stdio.h>
+const char* endianness(void) {
+  union {
+    uint32_t value;
+    uint8_t data[sizeof(uint32_t)];
+  } number;
+  number.data[0] = 0x00;
+  number.data[1] = 0x01;
+  number.data[2] = 0x02;
+  number.data[3] = 0x03;
+  switch (number.value) {
+  case UINT32_C(0x00010203): return "ENDIAN_BIG";
+  case UINT32_C(0x03020100): return "ENDIAN_LITTLE";
+  default:                   return "ENDIAN_UNKNOWN";
+  }
+}
+
+int main() {
+	printf("%s\n", endianness());
+	return 0;
+}
+EOF
+
+_ENDIANNESS="$(./a.out)"
+echo $_ENDIANNESS
+
 rm -f config.h
 rm -f a.out
 
-for i in PIPE2 ENDIAN_H SYS_ENDIAN_H OSBYTEORDER_H GETENTROPY_UNISTD_H GETENTROPY_SYS_RANDOM_H STAT_AMC_TIM STAT_AMC_TIMESPEC; do
+for i in PIPE2 ENDIAN_H SYS_ENDIAN_H OSBYTEORDER_H ENDIAN_NONSTANDARD_TOH GETENTROPY_UNISTD_H GETENTROPY_SYS_RANDOM_H STAT_AMC_TIM STAT_AMC_TIMESPEC; do
 	eval "[ \"\${HAVE_${i}}\" != \"\" ]" && echo "#define HAVE_${i}" >> config.h
 done
 
 [ "$USE_NETBSD_GETENTROPY" != "" ] && echo "#define USE_NETBSD_GETENTROPY" >> config.h
+echo "#define IS_${_ENDIANNESS}" >> config.h
 
 true
