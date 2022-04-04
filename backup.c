@@ -141,6 +141,7 @@ int walk(unsigned char *roothash, int base_fd, struct ctx *ctx)
 	struct level *cur = malloc(sizeof *cur);
 	if (!cur) goto fail;
 
+	cur->dnamelen = 1;
 	cur->d = fdopendir(base_fd);
 	if (!cur->d) goto fail;
 	cur->parent = 0;
