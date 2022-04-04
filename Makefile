@@ -5,7 +5,10 @@ CFLAGS = -g -O3 -Wall
 #CFLAGS = -O2 -Wall
 #LDFLAGS = -static
 
-all: bakelite
+all: config.h bakelite
+
+config.h: configure
+	./configure
 
 bakelite: $(OBJS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(OBJS)
@@ -14,6 +17,6 @@ bakelite: $(OBJS)
 	$(CC) $(CFLAGS) -o $@ -c $<
 
 clean:
-	rm -f bakelite $(OBJS)
+	rm -f bakelite config.h $(OBJS)
 
 $(OBJS):
