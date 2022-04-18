@@ -1,11 +1,13 @@
+#include "config.h"
+
 #include <dirent.h>
 #include <errno.h>
-#include <sys/stat.h>
+#include "compats/stat.h"
 #include <fcntl.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
-#include <unistd.h>
+#include "compats/unistd.h"
 #include <time.h>
 #include <string.h>
 #include <limits.h>

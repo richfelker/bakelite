@@ -1,9 +1,11 @@
+#include "config.h"
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <dirent.h>
-#include <unistd.h>
-#include <sys/stat.h>
+#include "compats/unistd.h"
+#include "compats/stat.h"
 #include <fcntl.h>
 #include <errno.h>
 #include "crypto.h"

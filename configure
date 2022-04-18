@@ -1,0 +1,187 @@
+#!/usr/bin/env sh
+## pipe2(2)
+# Linux, OpenBSD and FreeBSD have this function in <unistd.h>
+# macOS does not have this function at all
+HAVE_PIPE2=
+
+## endian.h
+# Most operating systems (such as Linux and OpenBSD) have these functions in <endian.h>
+HAVE_ENDIAN_H=
+# FreeBSD has these functions in <sys/endian.h>
+HAVE_SYS_ENDIAN_H=
+# macOS has its own functions, declared in <libkern/OSByteOrder.h>
+HAVE_OSBYTEORDER_H=
+# FreeBSD and NetBSD have some non-standard names for some endianness macros
+HAVE_ENDIAN_NONSTANDARD_TOH=1
+
+## getentropy(2)
+# Linux, FreeBSD and OpenBSD have this function in <unistd.h>
+HAVE_GETENTROPY_UNISTD_H=
+# macOS has this function in <sys/random.h>
+HAVE_GETENTROPY_SYS_RANDOM_H=
+# NetBSD does not have this function, but can be written in userspace to act similarly
+USE_NETBSD_GETENTROPY=
+
+# 
+_ENDIANNESS=
+
+## stat(2)
+# The standard names for the timespec fields in the `struct stat` structure are `st_[amc]tim`
+# macOS, for some reason, has them named `st_[amc]timespec`
+
+# TODO: This variable could have a better name?
+HAVE_STAT_AMC_TIM=
+HAVE_STAT_AMC_TIMESPEC=
+
+### Tests
+## pipe2(2)
+printf "$1: testing for pipe2(2)... "
+cc -x c - 2>/dev/null <<EOF && HAVE_PIPE2=1 || true
+#include <unistd.h>
+int main() {
+	pipe2(NULL, 0);
+	return 0;
+}
+EOF
+echo "${HAVE_PIPE2:-fail}"
+
+## endian.h
+printf "$1: testing for <endian.h>... "
+cc -x c - 2>/dev/null <<EOF && HAVE_ENDIAN_H=1 || true
+#include <endian.h>
+int main() {
+	return 0;
+}
+EOF
+echo "${HAVE_ENDIAN_H:-fail}"
+
+if [ "$HAVE_ENDIAN_H" = "" ]; then
+	printf "$1: testing for <sys/endian.h>... "
+	cc -x c - 2>/dev/null <<EOF && HAVE_SYS_ENDIAN_H=1 || true
+	#include <sys/endian.h>
+	int main() {
+		return 0;
+	}
+EOF
+	echo "${HAVE_SYS_ENDIAN_H:-fail}"
+fi
+
+if [ "$HAVE_SYS_ENDIAN_H" = "" ] && [ "$HAVE_ENDIAN_H" = "" ]; then
+	printf "$1: testing for <libkern/OSByteOrder.h>... "
+	cc -x c - 2>/dev/null <<EOF && HAVE_OSBYTEORDER_H=1 || true
+	#include <libkern/OSByteOrder.h>
+	int main() {
+		return 0;
+	}
+EOF
+	echo "${HAVE_OSBYTEORDER_H:-fail}"
+fi
+
+if [ "$HAVE_SYS_ENDIAN_H" = "1" ] && [ "$HAVE_ENDIAN_H" = "1" ]; then
+	printf "$1: testing for non-standard endian macros... "
+	cc -x c - 2>/dev/null <<EOF && HAVE_ENDIAN_NONSTANDARD_TOH= || true
+#include <endian.h>
+int main() {
+	return be64toh(0);
+}
+EOF
+	echo "${HAVE_ENDIAN_NONSTANDARD_TOH:-non-standard}"
+fi
+
+## getentropy(2)
+printf "$1: testing for getentropy(2) on <unistd.h>... "
+cc -x c - 2>/dev/null <<EOF && HAVE_GETENTROPY_UNISTD_H=1 || true
+#include <unistd.h>
+int main() {
+	getentropy(NULL, 0);
+	return 0;
+}
+EOF
+echo "${HAVE_GETENTROPY_UNISTD_H:-fail}"
+
+if [ "$HAVE_GETENTROPY_UNISTD_H" = "" ]; then
+	printf "$1: testing for getentropy(2) on <sys/random.h>... "
+	cc -x c - 2>/dev/null <<EOF && HAVE_GETENTROPY_SYS_RANDOM_H=1 || true
+	#include <sys/random.h>
+	int main() {
+		getentropy(NULL, 0);
+		return 0;
+	}
+EOF
+	echo "${HAVE_GETENTROPY_SYS_RANDOM_H:-fail}"
+fi
+
+if [ "$(uname)" = "NetBSD" ]; then
+	USE_NETBSD_GETENTROPY=1
+	printf "$1: NetBSD: using special getentropy(2) declaration...\n"
+fi
+
+## stat(2)
+printf "$1: testing for /st_[amc]tim/ fields in struct stat... "
+cc -x c - 2>/dev/null <<EOF && HAVE_STAT_AMC_TIM=1 || true
+#include <sys/stat.h>
+int main() {
+	struct stat st;
+	st.st_atim;
+	st.st_mtim;
+	st.st_ctim;
+	return 0;
+}
+EOF
+echo "${HAVE_STAT_AMC_TIM:-fail}"
+
+if [ "${HAVE_STAT_AMC_TIM}" = "" ]; then
+	printf "$1: testing for /st_[amc]timespec/ fields in struct stat... "
+	cc -x c - 2>/dev/null <<EOF && HAVE_STAT_AMC_TIMESPEC=1 || true
+	#include <sys/stat.h>
+	int main() {
+		struct stat st;
+		st.st_atimespec;
+		st.st_mtimespec;
+		st.st_ctimespec;
+		return 0;
+	}
+EOF
+	echo "${HAVE_STAT_AMC_TIMESPEC:-fail}"
+fi
+
+printf "$1: testing platform's endianness... "
+cc -x c - 2>/dev/null <<EOF
+#include <stdint.h>
+#include <stdio.h>
+const char* endianness(void) {
+  union {
+    uint32_t value;
+    uint8_t data[sizeof(uint32_t)];
+  } number;
+  number.data[0] = 0x00;
+  number.data[1] = 0x01;
+  number.data[2] = 0x02;
+  number.data[3] = 0x03;
+  switch (number.value) {
+  case UINT32_C(0x00010203): return "ENDIAN_BIG";
+  case UINT32_C(0x03020100): return "ENDIAN_LITTLE";
+  default:                   return "ENDIAN_UNKNOWN";
+  }
+}
+
+int main() {
+	printf("%s\n", endianness());
+	return 0;
+}
+EOF
+
+_ENDIANNESS="$(./a.out)"
+echo $_ENDIANNESS
+
+rm -f config.h
+rm -f a.out
+
+for i in PIPE2 ENDIAN_H SYS_ENDIAN_H OSBYTEORDER_H ENDIAN_NONSTANDARD_TOH GETENTROPY_UNISTD_H GETENTROPY_SYS_RANDOM_H STAT_AMC_TIM STAT_AMC_TIMESPEC; do
+	eval "[ \"\${HAVE_${i}}\" != \"\" ]" && echo "#define HAVE_${i}" >> config.h
+done
+
+[ "$USE_NETBSD_GETENTROPY" != "" ] && echo "#define USE_NETBSD_GETENTROPY" >> config.h
+echo "#define IS_${_ENDIANNESS}" >> config.h
+
+true

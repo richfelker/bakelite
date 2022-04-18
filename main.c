@@ -1,7 +1,9 @@
+#include "config.h"
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <unistd.h>
+#include "compats/unistd.h"
 
 int init_main(int, char **, char *);
 int genkey_main(int, char **, char *);
