@@ -238,6 +238,8 @@ int walk(unsigned char *roothash, int base_fd, struct ctx *ctx)
 
 			if (S_ISDIR(st.st_mode)) {
 				if (localindex_getino(new_index, st.st_dev, st.st_ino, 0) > 0) {
+					if (fseeko(path_f, -namelen, SEEK_CUR) < 0)
+						goto fail;
 					fprintf(stderr, "skipping already-visited directory (%s %jx:%ju)\n",
 						cur->de->d_name,
 						(uintmax_t)st.st_dev,
