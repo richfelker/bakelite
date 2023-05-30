@@ -94,7 +94,7 @@ static struct timespec strtots(const char *s0)
 	char *s;
 	struct timespec ts;
 	ts.tv_sec = strtoll(s0, &s, 10);
-	ts.tv_nsec = strtol(s, 0, 10);
+	ts.tv_nsec = *s=='.' ? strtol(s+1, 0, 10) : 0;
 	return ts;
 }
 
