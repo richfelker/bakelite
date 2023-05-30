@@ -30,9 +30,9 @@ static int dupe(int fd)
 void *load_and_decrypt_file(size_t *size, unsigned char *computed_hash, int dfd, const char *name, struct decrypt_context *dc)
 {
 	int fd = openat(dfd, name, O_RDONLY|O_CLOEXEC);
+	if (fd<0) return 0;
 	struct stat st;
-	fstat(fd, &st);
-	if (st.st_size > PTRDIFF_MAX) {
+	if (fstat(fd, &st) || st.st_size > PTRDIFF_MAX) {
 		close(fd);
 		return 0;
 	}
@@ -231,6 +231,14 @@ static int do_restore(const char *dest, const unsigned char *roothash, struct ct
 			if (cur->pos+HASHLEN >= cur->dlen) goto fail;
 			new->hash = cur->data+cur->pos;
 			new->data = load_and_decrypt_hash(&new->dlen, new->hash, ctx->objdir, &ctx->dc);
+			if (!new->data) {
+				error_msg(cur, "loading inode file");
+				ctx->errorcnt++;
+				if (ctx->stop_on_errors) goto fail;
+				cur->child = 0;
+				free(new);
+				continue;
+			}
 			cur->pos += HASHLEN;
 			size_t namelen = strnlen((char *)cur->data+cur->pos, cur->dlen-cur->pos);
 			if (cur->data[cur->pos+namelen]) goto fail;
@@ -273,7 +281,7 @@ static int do_restore(const char *dest, const unsigned char *roothash, struct ct
 					const unsigned char *bhash = cur->data+cur->pos;
 					size_t blen;
 					unsigned char *block = load_and_decrypt_hash(&blen, bhash, ctx->objdir, &ctx->dc);
-					if (blen < 4) goto fail;
+					if (!block || blen < 4) break;
 					fwrite(block+4, 1, blen-4, f);
 					if (ctx->new_index) {
 						unsigned char clearhash[HASHLEN];
@@ -285,7 +293,11 @@ static int do_restore(const char *dest, const unsigned char *roothash, struct ct
 					}
 					free(block);
 				}
-				if (cur->pos != cur->dlen) goto fail;
+				if (cur->pos != cur->dlen) {
+					error_msg(cur, "restoring file");
+					ctx->errorcnt++;
+					if (ctx->stop_on_errors) goto fail;
+				}
 			} else if (got_idata) {
 				fwrite(cur->data+cur->pos, 1, cur->dlen-cur->pos, f);
 			} else {
