@@ -106,6 +106,7 @@ struct ctx {
 	int progress;
 	int stop_on_errors;
 	int objdir;
+	int dryrun;
 	struct localindex *new_index;
 };
 
@@ -197,7 +198,7 @@ static int do_restore(const char *dest, const unsigned char *roothash, struct ct
 				}
 				cur->pos += strlen(s) + 1;
 			}
-			if (S_ISDIR(cur->mode)) {
+			if (S_ISDIR(cur->mode) && !ctx->dryrun) {
 				int pfd = cur->parent ? cur->parent->fd : AT_FDCWD;
 				if (mkdirat(pfd, cur->name, 0700) && errno != EEXIST) {
 					error_msg(cur, "mkdir");
@@ -214,6 +215,11 @@ static int do_restore(const char *dest, const unsigned char *roothash, struct ct
 				}
 			}
 			if (ctx->verbose) {
+				if (ctx->dryrun) {
+					char hashstr[2*HASHLEN+1];
+					bin2hex(hashstr, cur->hash, HASHLEN);
+					fprintf(stdout, "%s ", hashstr);
+				}
 				fprint_pathname(stdout, cur);
 				putchar('\n');
 			} else if (ctx->progress) {
@@ -247,6 +253,7 @@ static int do_restore(const char *dest, const unsigned char *roothash, struct ct
 			cur = new;
 			continue;
 		}
+		if (ctx->dryrun) goto ino_done;
 		if (S_ISREG(cur->mode)) {
 			if (nlink > 1) {
 				char hashstr[2*HASHLEN+1];
@@ -376,10 +383,11 @@ int restore_main(int argc, char **argv, char *progname)
 	const char *destdir = 0;
 	const char *keyfile = 0;
 	const char *index_file = 0;
+	int dryrun = 0;
 	int verbose = 0, progress = 0, stop_on_errors = 0;
 	struct localindex new_index;
 
-	while ((c=getopt(argc, argv, "r:d:k:vPSi:")) >= 0) switch (c) {
+	while ((c=getopt(argc, argv, "r:d:k:vPSi:n")) >= 0) switch (c) {
 	case 'r':
 		// FIXME: not used for now
 		roothash_string = optarg;
@@ -401,6 +409,11 @@ int restore_main(int argc, char **argv, char *progname)
 		break;
 	case 'i':
 		index_file = optarg;
+		break;
+	case 'n':
+		dryrun = 1;
+		verbose = 1;
+		destdir = "";
 		break;
 	case '?':
 		usage(progname);
@@ -477,6 +490,7 @@ int restore_main(int argc, char **argv, char *progname)
 		.dc.rcpt_secret = rcpt_secret,
 		.dc.ephemeral_map = map_create(),
 		.new_index = index_file ? &new_index : 0,
+		.dryrun = dryrun,
 	};
 	unsigned char roothash[HASHLEN];
 	if (strlen(roothash_string) != 2*HASHLEN) {
