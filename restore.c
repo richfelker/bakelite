@@ -237,6 +237,11 @@ static int do_restore(const char *dest, const unsigned char *roothash, struct ct
 			if (cur->pos+HASHLEN >= cur->dlen) goto fail;
 			new->hash = cur->data+cur->pos;
 			new->data = load_and_decrypt_hash(&new->dlen, new->hash, ctx->objdir, &ctx->dc);
+			cur->pos += HASHLEN;
+			size_t namelen = strnlen((char *)cur->data+cur->pos, cur->dlen-cur->pos);
+			if (cur->data[cur->pos+namelen]) goto fail;
+			new->name = (char *)cur->data + cur->pos;
+			cur->pos += namelen + 1;
 			if (!new->data) {
 				error_msg(cur, "loading inode file");
 				ctx->errorcnt++;
@@ -245,11 +250,6 @@ static int do_restore(const char *dest, const unsigned char *roothash, struct ct
 				free(new);
 				continue;
 			}
-			cur->pos += HASHLEN;
-			size_t namelen = strnlen((char *)cur->data+cur->pos, cur->dlen-cur->pos);
-			if (cur->data[cur->pos+namelen]) goto fail;
-			new->name = (char *)cur->data + cur->pos;
-			cur->pos += namelen + 1;
 			cur = new;
 			continue;
 		}
